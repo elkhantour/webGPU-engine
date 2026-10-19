@@ -13,6 +13,7 @@
 #include "runtime/probe/reflection/probe.h"
 #include "runtime/scene/environment/core.h"
 #include "runtime/viewport/viewport.h"
+#include "utils/path.h"
 
 #include "commons.h"
 #include <webgpu/webgpu.h>
@@ -244,7 +245,7 @@ static const WGPUDepthStencilState pbr_alpha_stencil = {
 
 static const RenderPipelineStateObject layout_pbr = {
     .label = "Pipeline Bind Groups - PBR",
-    .shader_path = RESOURCES_PATH_SHADER("pbr/pbr.wgsl"),
+    .shader_path = PATH_SHADER("pbr/pbr.wgsl"),
     .bind_groups_count = 3,
     .bind_groups =
         {
@@ -263,7 +264,7 @@ static const RenderPipelineStateObject layout_pbr = {
 
 static const RenderPipelineStateObject layout_pbr_double_sided = {
     .label = "Pipeline Bind Groups - PBR Double Sided",
-    .shader_path = RESOURCES_PATH_SHADER("pbr/pbr.wgsl"),
+    .shader_path = PATH_SHADER("pbr/pbr.wgsl"),
     .bind_groups_count = 3,
     .bind_groups =
         {
@@ -286,7 +287,7 @@ static const RenderPipelineStateObject layout_pbr_double_sided = {
 
 static const RenderPipelineStateObject layout_pbr_alpha = {
     .label = "Pipeline Bind Groups - PBR Alpha",
-    .shader_path = RESOURCES_PATH_SHADER("pbr/pbr.wgsl"),
+    .shader_path = PATH_SHADER("pbr/pbr.wgsl"),
     .bind_groups_count = 3,
     .bind_groups =
         {

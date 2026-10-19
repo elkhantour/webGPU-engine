@@ -23,6 +23,7 @@
 #include "runtime/scene/editor_mesh/list.h"
 #include "runtime/systems/scene_editor_mesh_system.h"
 #include "utils/color.h"
+#include "utils/path.h"
 
 void sem_probe_reflection_plane_create(SceneEditorMeshList *list,
                                        ProbeReflectionPlane *probe,
@@ -45,7 +46,7 @@ void sem_probe_reflection_plane_create(SceneEditorMeshList *list,
   Primitive primitive_cube;
   // TODO: cache MBIN
   loader_mbin_load_primitive(&(MBINLoadPrimitiveDescriptor){
-      .path = RESOURCES_PATH_MBIN("cube.mbin"),
+      .path = PATH_MBIN("cube.mbin"),
       .primitive = &primitive_cube,
   });
 
@@ -76,7 +77,7 @@ void sem_probe_reflection_plane_create(SceneEditorMeshList *list,
   Primitive primitive;
   // TODO: cache MBIN
   loader_mbin_load_primitive(&(MBINLoadPrimitiveDescriptor){
-      .path = RESOURCES_PATH_MBIN("plane.mbin"),
+      .path = PATH_MBIN("plane.mbin"),
       .primitive = &primitive,
   });
 
@@ -106,7 +107,7 @@ void sem_probe_reflection_plane_create(SceneEditorMeshList *list,
   Primitive primitive_arrow;
   // TODO: cache MBIN
   loader_mbin_load_primitive(&(MBINLoadPrimitiveDescriptor){
-      .path = RESOURCES_PATH_MBIN("arrow.mbin"),
+      .path = PATH_MBIN("arrow.mbin"),
       .primitive = &primitive_arrow,
   });
 

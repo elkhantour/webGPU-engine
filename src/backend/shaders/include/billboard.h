@@ -5,6 +5,7 @@
 #include "runtime/mesh/mesh.h"
 #include "runtime/pipeline/pipeline.h"
 #include "runtime/viewport/viewport.h"
+#include "utils/path.h"
 
 #include "commons.h"
 #include <webgpu/webgpu.h>
@@ -49,7 +50,7 @@ static const WGPUBindGroupLayoutDescriptor billboard_material_bind_group = {
 
 static const RenderPipelineStateObject layout_billboard = {
     .label = "Pipeline Bind Groups - Billboard",
-    .shader_path = RESOURCES_PATH_SHADER("billboard/billboard.wgsl"),
+    .shader_path = PATH_SHADER("billboard/billboard.wgsl"),
     .bind_groups_count = 2,
     .bind_groups = {&mvp_layout, &billboard_material_bind_group},
     .bindings = {.mvp = &mvp_binding},

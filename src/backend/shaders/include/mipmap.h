@@ -1,6 +1,7 @@
 #ifndef _COMPUTE_PIPELINE_LAYOUT_MIPMAP_H_
 #define _COMPUTE_PIPELINE_LAYOUT_MIPMAP_H_
 
+#include "utils/path.h"
 #include "runtime/pipeline/compute.h"
 #include <webgpu/webgpu.h>
 
@@ -42,7 +43,7 @@ static const WGPUBindGroupLayoutDescriptor mipmap_bind_group = {
 
 static const ComputePipelineStateObject layout_mipmap = {
     .label = "Compute Pipeline Bind Groups - Mipmap",
-    .shader_path = RESOURCES_PATH_SHADER("mipmap/mipmap.wgsl"),
+    .shader_path = PATH_SHADER("mipmap/mipmap.wgsl"),
     .bind_groups_count = 1,
     .bind_groups = {&mipmap_bind_group},
 };

@@ -12,14 +12,5 @@
 
 #define ENGINE_PREFIX
 
-// If adjusting those, make sure to sync with projects CMake resources mapping
-#define RESOURCES_PATH_SHADER(filename) "./shaders/" filename
-#define RESOURCES_PATH_TEXTURE(filename) "./textures/" filename
-#define RESOURCES_PATH_FONT(filename) "./fonts/" filename
-#define RESOURCES_PATH_GLTF(filename) "./gltf/" filename
-#define RESOURCES_PATH_MBIN(filename) "./mbin/" filename
-
-
-
 
 #endif

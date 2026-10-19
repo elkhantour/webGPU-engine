@@ -1,6 +1,7 @@
 #ifndef _PIPELINE_LAYOUT_BLIT_H_
 #define _PIPELINE_LAYOUT_BLIT_H_
 
+#include "utils/path.h"
 #include "commons.h"
 #include <webgpu/webgpu.h>
 
@@ -58,7 +59,7 @@ static const WGPUVertexState blit_vertex = {
 
 static const RenderPipelineStateObject layout_blit = {
     .label = "Pipeline Blit / Fullscreen Pass",
-    .shader_path = RESOURCES_PATH_SHADER("blit/blit.wgsl"),
+    .shader_path = PATH_SHADER("blit/blit.wgsl"),
     .bind_groups_count = 1,
     .bind_groups = {&blit_bind_group_layout},
     .pipeline_attributes =

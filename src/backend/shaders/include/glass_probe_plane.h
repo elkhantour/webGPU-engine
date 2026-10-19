@@ -9,6 +9,7 @@
 #include "runtime/probe/reflection/plane.h"
 #include "runtime/scene/environment/core.h"
 #include "runtime/viewport/viewport.h"
+#include "utils/path.h"
 
 #include <webgpu/webgpu.h>
 
@@ -96,7 +97,7 @@ static const PipelineBindingEnvironment glass_env_plane = {
 
 static const RenderPipelineStateObject layout_glass_probe_plane = {
     .label = "Pipeline Bind Groups - Glass Probe Plane",
-    .shader_path = RESOURCES_PATH_SHADER("glass_probe_plane/glass_probe_plane.wgsl"),
+    .shader_path = PATH_SHADER("glass_probe_plane/glass_probe_plane.wgsl"),
     .bind_groups_count = 2,
     .bind_groups = {&mvp_layout, &glass_probe_plane_bind_group},
     .bindings =

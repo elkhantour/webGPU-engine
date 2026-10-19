@@ -1,6 +1,7 @@
 #ifndef _PIPELINE_LAYOUT_stencil_H_
 #define _PIPELINE_LAYOUT_stencil_H_
 
+#include "utils/path.h"
 #include "commons.h"
 #include <webgpu/webgpu.h>
 
@@ -29,7 +30,7 @@ static const WGPUDepthStencilState selectable_stencil = {
 
 static const RenderPipelineStateObject layout_stencil = {
     .label = "Pipeline Bind Groups - Stencil",
-    .shader_path = RESOURCES_PATH_SHADER("stencil/stencil.wgsl"),
+    .shader_path = PATH_SHADER("stencil/stencil.wgsl"),
     .bind_groups_count = 1,
     .bind_groups = {&mvp_layout},
     .bindings = {.mvp = &mvp_binding},

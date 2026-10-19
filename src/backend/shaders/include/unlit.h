@@ -5,6 +5,7 @@
 #include "runtime/mesh/mesh.h"
 #include "runtime/pipeline/pipeline.h"
 #include "runtime/viewport/viewport.h"
+#include "utils/path.h"
 
 #include "commons.h"
 #include <webgpu/webgpu.h>
@@ -63,7 +64,7 @@ static const WGPUDepthStencilState unlit_depth = {
 
 static const RenderPipelineStateObject layout_unlit_stencil = {
     .label = "Pipeline Bind Groups - Unlit Stencil",
-    .shader_path = RESOURCES_PATH_SHADER("unlit/unlit.wgsl"),
+    .shader_path = PATH_SHADER("unlit/unlit.wgsl"),
     .bind_groups_count = 2,
     .bind_groups = {&mvp_layout, &unlint_layout_bind_group},
     .bindings = {.mvp = &mvp_binding},
@@ -76,7 +77,7 @@ static const RenderPipelineStateObject layout_unlit_stencil = {
 
 static const RenderPipelineStateObject layout_unlit = {
     .label = "Pipeline Bind Groups - Unlit",
-    .shader_path = RESOURCES_PATH_SHADER("unlit/unlit.wgsl"),
+    .shader_path = PATH_SHADER("unlit/unlit.wgsl"),
     .bind_groups_count = 2,
     .bind_groups = {&mvp_layout, &unlint_layout_bind_group},
     .bindings = {.mvp = &mvp_binding},

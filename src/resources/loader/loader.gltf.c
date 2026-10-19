@@ -4,6 +4,7 @@
 #include "backend/resource_manager.h"
 #include "runtime/engine/add.h"
 #include "runtime/systems/scene_system.h"
+#include "utils/path.h"
 #include "utils/system.h"
 #include <cglm/types.h>
 #include <cglm/util.h>
@@ -46,6 +47,7 @@
 
 typedef struct {
   cgltf_data *data;
+  char root_dir[1024];
   int pending;
 } LoaderGLTFContext;
 
@@ -81,7 +83,7 @@ static inline bool attribute_is_empty(const float *,
 static void ctx_release(LoaderGLTFContext *ctx) {
   if (--ctx->pending > 0)
     return;
-  
+
   cgltf_free(ctx->data);
   free(ctx);
 }
@@ -109,7 +111,7 @@ static void mesh_load_worker_start(void *);
 static void mesh_load_worker_done(void *);
 
 // shader utils
-static inline void bind_textures(Mesh *, cgltf_material *,
+static inline void bind_textures(Mesh *, cgltf_material *, const char *,
                                  const LoaderGLTFOptions *);
 
 static inline void bind_uniforms(Mesh *, cgltf_material *,
@@ -117,7 +119,7 @@ static inline void bind_uniforms(Mesh *, cgltf_material *,
 
 static LoaderGLTFStatus extract_texture(cgltf_texture_view *, void **, size_t *,
                                         int *, int *, int *, TextureResolution,
-                                        const char *);
+                                        const char *, const char *);
 
 LoaderGLTFStatus loader_gltf_load(const GLTFLoadDescriptor *desc,
                                   LoaderGLTFResult *dest) {
@@ -125,6 +127,8 @@ LoaderGLTFStatus loader_gltf_load(const GLTFLoadDescriptor *desc,
   logger_add(LoggerFlag_Import, "GLTF file: %s", desc->path);
 
   LoaderGLTFContext *ctx = calloc(1, sizeof(LoaderGLTFContext));
+  file_dir(desc->path, ctx->root_dir, sizeof(ctx->root_dir));
+  
   cgltf_result result;
 
   // load json structure
@@ -320,8 +324,8 @@ void mesh_load_worker_done(void *data) {
                                .name = material->name,
                            });
 
-  // load and bind gltf textures
-  bind_textures(mesh, material, options);
+  // load and bind gltf textures 
+  bind_textures(mesh, material, ctx->root_dir, options); // TODO: MOVE TO ASYNC
   bind_uniforms(mesh, material, options);
 
   engine_scene_add_mesh(engine, mesh, NULL, EngineAddFlag_None);
@@ -516,7 +520,7 @@ LoaderGLTFStatus create_mesh(LoaderGLTFContext *ctx, Engine *engine,
   Bind PBR textures
   store the texture_views (hold pointer to actual texture + other data)
  */
-void bind_textures(Mesh *mesh, cgltf_material *material,
+void bind_textures(Mesh *mesh, cgltf_material *material, const char *root_dir,
                    const LoaderGLTFOptions *options) {
 
   const uint8_t texture_count = 5;
@@ -572,9 +576,10 @@ void bind_textures(Mesh *mesh, cgltf_material *material,
     //(before freeing it)
     ShaderBindGroupTextureEntry *reflection_texture;
 
-    const LoaderGLTFStatus extracted_texture = extract_texture(
-        texture_view_list[t].gltf_texture, &data, &size, &width, &height,
-        &channels, options->max_texture_size, texture_view_list[t].label);
+    const LoaderGLTFStatus extracted_texture =
+        extract_texture(texture_view_list[t].gltf_texture, &data, &size, &width,
+                        &height, &channels, options->max_texture_size, root_dir,
+                        texture_view_list[t].label);
 
     if (extracted_texture == LoaderGLTFStatus_TextureFound) {
 
@@ -665,7 +670,7 @@ void bind_uniforms(Mesh *mesh, cgltf_material *material,
 LoaderGLTFStatus extract_texture(cgltf_texture_view *texture_view, void **data,
                                  size_t *size, int *width, int *height,
                                  int *channels, TextureResolution max_size,
-                                 const char *label) {
+                                 const char *root_dir, const char *label) {
 
   const TextureChannel forced_channel = TextureChannel_RGBA;
 
@@ -673,13 +678,22 @@ LoaderGLTFStatus extract_texture(cgltf_texture_view *texture_view, void **data,
 
     // TODO: check why cgltf buffer->size return smaller size that w * h *
     // channels
+
     cgltf_image *image = texture_view->texture->image;
+
     if (image->uri) {
       cgltf_decode_uri(image->uri);
 
-      logger_add(LoggerFlag_Import, "GLTF Texture '%s'", image->name);
+      char concat_path[1024];
+      if (root_dir)
+        snprintf(concat_path, sizeof(concat_path), "%s/%s", root_dir,
+                 image->uri);
+
+      char *final_path = root_dir ? concat_path : image->uri;
+
+      logger_add(LoggerFlag_Import, "GLTF Texture '%s'", final_path);
       TIMER("", {
-        *data = stbi_load(image->uri, width, height, channels, forced_channel);
+        *data = stbi_load(final_path, width, height, channels, forced_channel);
       });
 
     } else if (image->buffer_view) {
@@ -700,9 +714,9 @@ LoaderGLTFStatus extract_texture(cgltf_texture_view *texture_view, void **data,
       });
 
     } else {
-      // logger_add(LoggerFlag_Print,
-      //     "Loader GLTF: Texture found but couldn't be loaded, loading "
-      //     "default texture");
+      logger_add(LoggerFlag_Print,
+                 "Loader GLTF: Texture found but couldn't be loaded, loading "
+                 "default texture");
       return LoaderGLTFStatus_LoadError;
     }
 

@@ -6,7 +6,7 @@
 #include "runtime/pipeline/pipeline.h"
 #include "runtime/viewport/viewport.h"
 #include "utils/color.h"
-
+#include "utils/path.h"
 #include "commons.h"
 #include <webgpu/webgpu.h>
 
@@ -48,7 +48,7 @@ static const WGPUPrimitiveState line_primitive = {
 
 static const RenderPipelineStateObject layout_line = {
     .label = "Pipeline Bind Groups - Line",
-    .shader_path = RESOURCES_PATH_SHADER("line/line.wgsl"),
+    .shader_path = PATH_SHADER("line/line.wgsl"),
     .bind_groups_count = 2,
     .bind_groups = {&mvp_layout, &line_bind_group},
     .pipeline_attributes = {.primitive_state = &line_primitive},

@@ -101,7 +101,7 @@ GuiStatus gui_init(Gui *gui, const GuiDescriptor *desc) {
     gui_style_carbon(gui);
 
     ImGuiIO &io = ImGui::GetIO();
-    io.Fonts->AddFontFromFileTTF(RESOURCES_PATH_FONT("GolosText_Regular.ttf"),
+    io.Fonts->AddFontFromFileTTF(PATH_FONT("GolosText_Regular.ttf"),
                                  14.0f);
 
     ImGui_ImplWGPU_InitInfo info;

@@ -49,7 +49,7 @@ void sem_probe_reflection_grid_create(SceneEditorMeshList *list,
   Primitive cube_primitive;
   // TODO: cache MBIN
   loader_mbin_load_primitive(&(MBINLoadPrimitiveDescriptor){
-      .path = RESOURCES_PATH_MBIN("cube.mbin"),
+      .path = PATH_MBIN("cube.mbin"),
       .primitive = &cube_primitive,
   });
 

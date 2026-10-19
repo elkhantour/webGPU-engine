@@ -80,5 +80,6 @@ float4 fs_main(PbrVertexOut input) : SV_Target
                                   point_shadow + spot_shadow + sun_shadow);
 
     float4 combined = float4((ambient + direct.Lo * combined_shadow) + material.emissive, 1.0);
-    return apply_fog(combined, uEnvironment.fog, length(input.vFrag - cam_pos));
+    //return apply_fog(combined, uEnvironment.fog, length(input.vFrag - cam_pos));
+    return material.albedo;
 }

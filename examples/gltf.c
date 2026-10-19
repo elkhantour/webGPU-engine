@@ -8,7 +8,7 @@ void example_gltf(Engine *engine) {
   loader_gltf_load(
       &(GLTFLoadDescriptor){
           .engine = engine,
-          .path = RESOURCES_PATH_GLTF("cube.gltf"),
+          .path = PATH_GLTF("cube.gltf"),
           .cgltf_options = &(cgltf_options){0},
           .options =
               &(LoaderGLTFOptions){
@@ -53,7 +53,7 @@ void example_gltf_spa(Engine *engine) {
   loader_gltf_load(
       &(GLTFLoadDescriptor){
           .engine = engine,
-          .path = RESOURCES_PATH_GLTF("spa.gltf"),
+          .path = PATH_GLTF("spa.gltf"),
           .cgltf_options = &(cgltf_options){0},
           .options =
               &(LoaderGLTFOptions){
@@ -89,7 +89,7 @@ void example_gltf_podium(Engine *engine) {
   LoaderGLTFStatus status = loader_gltf_load(
       &(GLTFLoadDescriptor){
           .engine = engine,
-          .path = RESOURCES_PATH_GLTF("podium.gltf"),
+          .path = PATH_GLTF("podium.gltf"),
           .cgltf_options = &(cgltf_options){0},
           .options =
               &(LoaderGLTFOptions){

@@ -1,6 +1,7 @@
 #ifndef _COMPUTE_PIPELINE_LAYOUT_KAWASE_H_
 #define _COMPUTE_PIPELINE_LAYOUT_KAWASE_H_
 
+#include "utils/path.h"
 #include "backend/compute/kawase.h"
 #include "runtime/pipeline/compute.h"
 #include <webgpu/webgpu.h>
@@ -53,7 +54,7 @@ static const WGPUBindGroupLayoutDescriptor kawase_bind_group = {
 
 static const ComputePipelineStateObject layout_kawase = {
     .label = "Compute Pipeline Bind Groups - Kawase Blur",
-    .shader_path = RESOURCES_PATH_SHADER("kawase/kawase.wgsl"),
+    .shader_path = PATH_SHADER("kawase/kawase.wgsl"),
     .bind_groups_count = 1,
     .bind_groups = {&kawase_bind_group},
 };

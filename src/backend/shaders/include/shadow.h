@@ -5,7 +5,7 @@
 #include "runtime/mesh/mesh.h"
 #include "runtime/pipeline/render.h"
 #include "runtime/viewport/viewport.h"
-
+#include "utils/path.h"
 #include "commons.h"
 #include "backend/renderer/shadow_map/core.h"
 
@@ -33,7 +33,7 @@ static const WGPUDepthStencilState shadow_stencil = {
 
 static const RenderPipelineStateObject layout_shadow = {
     .label = "Pipeline Bind Groups - Shadow",
-    .shader_path = RESOURCES_PATH_SHADER("shadow/shadow.wgsl"),
+    .shader_path = PATH_SHADER("shadow/shadow.wgsl"),
     .bind_groups_count = 1,
     .bind_groups = {&mp_layout},
     .pipeline_attributes =

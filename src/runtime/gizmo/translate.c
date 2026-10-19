@@ -10,6 +10,7 @@
 #include "runtime/mesh/transform.h"
 #include "runtime/primitive/plane.h"
 #include "runtime/shader/core.h"
+#include "utils/path.h"
 #include <stdint.h>
 #include <stdio.h>
 
@@ -21,7 +22,7 @@ void gizmo_position_create(MeshRefList *visual_list,
 
   gizmo_create_handles(visual_list, interactive_list,
                        &(GizmoCreateMeshDescriptor){
-                           .mbin_path = RESOURCES_PATH_MBIN("translate.mbin"),
+                           .mbin_path = PATH_MBIN("translate.mbin"),
                            .offset = {0.0f, 0.1f, 0.0f},
                        });
 

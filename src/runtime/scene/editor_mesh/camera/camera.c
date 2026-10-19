@@ -22,6 +22,7 @@
 #include "runtime/scene/editor_mesh/list.h"
 #include "runtime/systems/scene_editor_mesh_system.h"
 #include "utils/color.h"
+#include "utils/path.h"
 
 void sem_camera_create(SceneEditorMeshList *list, Camera *camera,
                        const SEMCreateDescriptor *desc) {
@@ -53,7 +54,7 @@ void sem_camera_create(SceneEditorMeshList *list, Camera *camera,
   // create box mesh
   Primitive cube_primitive;
   loader_mbin_load_primitive(&(MBINLoadPrimitiveDescriptor){
-      .path = RESOURCES_PATH_MBIN("cube.mbin"),
+      .path = PATH_MBIN("cube.mbin"),
       .primitive = &cube_primitive,
   });
 

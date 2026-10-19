@@ -208,6 +208,7 @@ string(JOIN " " PRELOAD_FLAGS_STRING ${PRELOAD_ARGS_LIST})
 
 # Export to parent scope
 set(${PROJECT_NAME}_PRELOAD_FLAGS ${PRELOAD_FLAGS_STRING} PARENT_SCOPE)
+set(${PROJECT_NAME}_WGSL_OUT_FILES ${WGSL_OUT_FILES} PARENT_SCOPE)
 
 # ----------------------------
 # Engine Library Definition

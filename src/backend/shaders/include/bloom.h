@@ -5,6 +5,7 @@
 #include "commons.h"
 #include "runtime/texture/core.h"
 #include <webgpu/webgpu.h>
+#include "utils/path.h"
 
 typedef struct {
   float threshold;
@@ -57,7 +58,7 @@ static const WGPUColorTargetState bloom_color_target = {
 
 static const RenderPipelineStateObject layout_bloom = {
     .label = "Pipeline Bloom Pass",
-    .shader_path = RESOURCES_PATH_SHADER("bloom/bloom.wgsl"),
+    .shader_path = PATH_SHADER("bloom/bloom.wgsl"),
     .bind_groups_count = 1,
     .bind_groups = {&bloom_bind_group_layout},
     .pipeline_attributes =

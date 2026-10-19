@@ -6,6 +6,7 @@
 #include "runtime/pipeline/pipeline.h"
 #include "runtime/scene/editor_mesh/grid/grid.h"
 #include "runtime/viewport/viewport.h"
+#include "utils/path.h"
 
 #include "commons.h"
 
@@ -39,7 +40,7 @@ static const WGPUDepthStencilState grid_stencil = {
 
 static const RenderPipelineStateObject layout_grid = {
     .label = "Pipeline Bind Groups - Grid",
-    .shader_path = RESOURCES_PATH_SHADER("grid/grid.wgsl"),
+    .shader_path = PATH_SHADER("grid/grid.wgsl"),
     .bind_groups_count = 2,
     .bind_groups = {&mvp_layout, &grid_bind_group},
     .pipeline_attributes =

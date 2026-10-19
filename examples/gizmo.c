@@ -8,7 +8,7 @@ void example_gizmo(Engine *engine) {
   Mesh *gizmo = rem_new_mesh();
   Primitive mbin_primitive;
   loader_mbin_load_primitive(&(MBINLoadPrimitiveDescriptor){
-      .path = RESOURCES_PATH_MBIN("sphere.mbin"),
+      .path = PATH_MBIN("sphere.mbin"),
       .primitive = &mbin_primitive,
   });
 
