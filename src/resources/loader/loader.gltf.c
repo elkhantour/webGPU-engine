@@ -3,7 +3,7 @@
 #include "backend/job_system.h"
 #include "backend/resource_manager.h"
 #include "runtime/engine/add.h"
-#include "runtime/systems/scene_system.h"
+#include "runtime/engine/core.h"
 #include "utils/path.h"
 #include "utils/system.h"
 #include <cglm/types.h>
@@ -71,6 +71,26 @@ typedef struct {
   VertexIndex out_vertex_index;
 } MeshLoadJob;
 
+typedef struct {
+
+  Engine *engine;
+  Mesh *mesh;
+  LoaderGLTFContext *context;
+
+  TextureResolution max_resolution;
+  cgltf_texture_view *texture_view;
+  WGPUTextureView fallback_texture;
+  uint8_t binding;
+  // const char *label;
+
+  void *out_data;
+  size_t out_size;
+  int out_width;
+  int out_height;
+  int out_channels;
+
+} TextureLoadJob;
+
 // gltf utils
 static float *get_attributes(const cgltf_accessor *);
 
@@ -111,8 +131,11 @@ static void mesh_load_worker_start(void *);
 static void mesh_load_worker_done(void *);
 
 // shader utils
-static inline void bind_textures(Mesh *, cgltf_material *, const char *,
-                                 const LoaderGLTFOptions *);
+static inline void bind_textures(LoaderGLTFContext *, Engine *, Mesh *,
+                                 cgltf_material *, const LoaderGLTFOptions *);
+
+static void texture_load_worker_start(void *);
+static void texture_load_worker_done(void *);
 
 static inline void bind_uniforms(Mesh *, cgltf_material *,
                                  const LoaderGLTFOptions *);
@@ -128,7 +151,7 @@ LoaderGLTFStatus loader_gltf_load(const GLTFLoadDescriptor *desc,
 
   LoaderGLTFContext *ctx = calloc(1, sizeof(LoaderGLTFContext));
   file_dir(desc->path, ctx->root_dir, sizeof(ctx->root_dir));
-  
+
   cgltf_result result;
 
   // load json structure
@@ -324,8 +347,8 @@ void mesh_load_worker_done(void *data) {
                                .name = material->name,
                            });
 
-  // load and bind gltf textures 
-  bind_textures(mesh, material, ctx->root_dir, options); // TODO: MOVE TO ASYNC
+  // load and bind gltf textures
+  bind_textures(ctx, engine, mesh, material, options); // TODO: MOVE TO ASYNC
   bind_uniforms(mesh, material, options);
 
   engine_scene_add_mesh(engine, mesh, NULL, EngineAddFlag_None);
@@ -520,10 +543,10 @@ LoaderGLTFStatus create_mesh(LoaderGLTFContext *ctx, Engine *engine,
   Bind PBR textures
   store the texture_views (hold pointer to actual texture + other data)
  */
-void bind_textures(Mesh *mesh, cgltf_material *material, const char *root_dir,
-                   const LoaderGLTFOptions *options) {
+void bind_textures(LoaderGLTFContext *ctx, Engine *engine, Mesh *mesh,
+                   cgltf_material *material, const LoaderGLTFOptions *options) {
 
-  const uint8_t texture_count = 5;
+  static const uint8_t TEXTURE_COUNT = 5;
 
   // TODO: check how to handle if object already has a AO Texture imported ?
   // overwrite ?
@@ -562,62 +585,97 @@ void bind_textures(Mesh *mesh, cgltf_material *material, const char *root_dir,
 
   uint8_t binding = 0;
 
-  // get the cached fallback texture view from renderer
-  const WGPUTextureView fallback_texture =
-      std_texture_view(TextureViewType_Float);
+  for (int t = 0; t < TEXTURE_COUNT; t++) {
 
-  for (int t = 0; t < texture_count; t++) {
-
-    void *data;
-    size_t size;
-    int width, height, channels;
-
-    // If find texture, upload new texture to GPU and bind to shader
-    //(before freeing it)
-    ShaderBindGroupTextureEntry *reflection_texture;
-
-    const LoaderGLTFStatus extracted_texture =
-        extract_texture(texture_view_list[t].gltf_texture, &data, &size, &width,
-                        &height, &channels, options->max_texture_size, root_dir,
-                        texture_view_list[t].label);
-
-    if (extracted_texture == LoaderGLTFStatus_TextureFound) {
-
-      // send texture + sampler to shader
-      reflection_texture =
-          shader_update_texture(mesh_shader(mesh, MeshShader_Texture),
-                                SHADER_TEXTURE_BINDGROUP_TEXTURES, binding,
-                                &(ShaderUpdateTexture){
-                                    .data = data,
-                                    .size = size,
-                                    .width = width,
-                                    .height = height,
-                                    .dimension = WGPUTextureViewDimension_2D,
-                                    .format = TEXTURE_FORMAT_OFFSCREEN,
-                                    .channels = TextureChannel_RGBA,
-                                },
-                                ShaderUpdateFlag_None);
-    } else {
-
-      reflection_texture = shader_update_texture_view(
-          mesh_shader(mesh, MeshShader_Texture),
-          SHADER_TEXTURE_BINDGROUP_TEXTURES, binding,
-          texture_view_list[t].fallback_texture, TEXTURE_FORMAT_OFFSCREEN,
-          ShaderUpdateFlag_None);
+    TextureLoadJob *job = calloc(1, sizeof(TextureLoadJob));
+    {
+      job->texture_view = texture_view_list[t].gltf_texture;
+      job->mesh = mesh;
+      job->engine = engine;
+      job->max_resolution = options->max_texture_size;
+      job->fallback_texture = texture_view_list[t].fallback_texture;
+      job->context = ctx;
+      job->binding = binding;
+      // DELETE ME job->label = texture_view_list[t].label;
     }
 
-    // transfert texture view to reflection shader (reuse resource), however
-    // need to be careful with shared ownership. Here it shouldn't be to
-    // much trouble since reflection and texture shader lifetime are mostly
-    // linked.
-    Shader *reflection_shader = mesh_shader(mesh, MeshShader_Reflection);
-    shader_update_texture_view(
-        reflection_shader, SHADER_TEXTURE_BINDGROUP_TEXTURES, binding,
-        reflection_texture->texture_view, reflection_texture->format,
-        ShaderUpdateFlag_ReleasePrevious);
-
     binding++;
+    ctx->pending++;
+    job_system_submit(engine->job_system, texture_load_worker_start,
+                      texture_load_worker_done, job);
   }
+}
+
+void texture_load_worker_start(void *data) {
+
+  TextureLoadJob *job = (TextureLoadJob *)data;
+  cgltf_texture_view *texture_view = job->texture_view;
+  void **texture_data = &job->out_data;
+  int *width = &job->out_width;
+  int *height = &job->out_height;
+  int *channels = &job->out_channels;
+  size_t *size = &job->out_size;
+  TextureResolution max_res = job->max_resolution;
+  const char *root_dir = job->context->root_dir;
+
+  if (extract_texture(texture_view, texture_data, size, width, height, channels,
+                      max_res, root_dir, "Label") != LoaderGLTFStatus_Success) {
+    job->texture_view = NULL;
+  }
+}
+
+void texture_load_worker_done(void *data) {
+
+  TextureLoadJob *job = (TextureLoadJob *)data;
+  WGPUTextureView fallback_texture = job->fallback_texture;
+  Mesh *mesh = job->mesh;
+  Engine *engine = job->engine;
+  void *texture_data = &job->out_data;
+  int width = job->out_width;
+  int height = job->out_height;
+  int channels = job->out_channels;
+  size_t size = job->out_size;
+  uint8_t binding = job->binding;
+
+  // If find texture, upload new texture to GPU and bind to shader
+  //(before freeing it)
+  ShaderBindGroupTextureEntry *reflection_texture;
+
+  if (job->texture_view != NULL) {
+
+    // send texture + sampler to shader
+    reflection_texture =
+        shader_update_texture(mesh_shader(mesh, MeshShader_Texture),
+                              SHADER_TEXTURE_BINDGROUP_TEXTURES, binding,
+                              &(ShaderUpdateTexture){
+                                  .data = data,
+                                  .size = size,
+                                  .width = width,
+                                  .height = height,
+                                  .dimension = WGPUTextureViewDimension_2D,
+                                  .format = TEXTURE_FORMAT_OFFSCREEN,
+                                  .channels = TextureChannel_RGBA,
+                              },
+                              ShaderUpdateFlag_None);
+  } else {
+
+    reflection_texture = shader_update_texture_view(
+        mesh_shader(mesh, MeshShader_Texture),
+        SHADER_TEXTURE_BINDGROUP_TEXTURES, binding, fallback_texture,
+        TEXTURE_FORMAT_OFFSCREEN, ShaderUpdateFlag_None);
+  }
+
+  // transfert texture view to reflection shader (reuse resource), however
+  // need to be careful with shared ownership. Here it shouldn't be to
+  // much trouble since reflection and texture shader lifetime are mostly
+  // linked.
+  Shader *reflection_shader = mesh_shader(mesh, MeshShader_Reflection);
+  shader_update_texture_view(
+      reflection_shader, SHADER_TEXTURE_BINDGROUP_TEXTURES, binding,
+      reflection_texture->texture_view, reflection_texture->format,
+      ShaderUpdateFlag_ReleasePrevious);
+
+  free(job);
 }
 
 /**

@@ -30,6 +30,8 @@ static inline void engine_init_gizmo(Engine *, Gizmo *);
  */
 EngineStatus engine_init(Engine *engine) {
 
+  memset(engine, 0, sizeof(Engine));
+
   {
     // === Renderer ===
     engine->renderer = rem_new_renderer();
@@ -44,7 +46,7 @@ EngineStatus engine_init(Engine *engine) {
   {
     // === Job System ===
     engine->job_system = rem_new_job_system();
-    job_system_init(engine->job_system, 2);
+    job_system_init(engine->job_system, 1);
   }
 
   UBOManager *ubo;

@@ -43,11 +43,11 @@ float4 fs_main(PbrVertexOut input) : SV_Target
     float3 cam_pos = camera.position.xyz;
     float2 uv = input.vUv;
 
-    float4 albedo    = diffuse_texture.Sample(linear_sampler, uv);
-    float4 metallic  = metallic_texture.Sample(linear_sampler, uv);
-    float4 normal    = normal_texture.Sample(linear_sampler, uv);
-    float4 occlusion = occlusion_texture.Sample(linear_sampler, uv);
-    float4 emissive  = emissive_texture.Sample(linear_sampler, uv);
+    float4 albedo    = diffuse_texture.SampleLevel(linear_sampler, uv, 1.0);
+    float4 metallic  = metallic_texture.SampleLevel(linear_sampler, uv, 1.0);
+    float4 normal    = normal_texture.SampleLevel(linear_sampler, uv, 1.0);
+    float4 occlusion = occlusion_texture.SampleLevel(linear_sampler, uv, 1.0);
+    float4 emissive  = emissive_texture.SampleLevel(linear_sampler, uv, 1.0);
 
     Material material = create_material(albedo, metallic, normal, occlusion, emissive, uPBR);
     if (material.alpha < uPBR.alpha_threshold)
@@ -80,6 +80,6 @@ float4 fs_main(PbrVertexOut input) : SV_Target
                                   point_shadow + spot_shadow + sun_shadow);
 
     float4 combined = float4((ambient + direct.Lo * combined_shadow) + material.emissive, 1.0);
-    //return apply_fog(combined, uEnvironment.fog, length(input.vFrag - cam_pos));
-    return material.albedo;
+    return apply_fog(combined, uEnvironment.fog, length(input.vFrag - cam_pos));
+
 }

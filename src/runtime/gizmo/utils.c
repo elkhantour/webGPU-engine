@@ -6,7 +6,7 @@
 #include "./core.h"
 #include "backend/resource_manager.h"
 #include "backend/shaders/core.h"
-#include "resources/loader/loader.mbin.h"
+#include "resources/loader/mbin.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/list.h"
 #include "runtime/mesh/ref_list.h"

@@ -1,5 +1,5 @@
 CompileFlags:
-  Add: [-I/usr/local/opt/emscripten/libexec/cache/sysroot/include, -I/Users/elkhantour/Documents/C/nkengine/vendor, -I/Users/elkhantour/Documents/C/nkengine/src]
+  Add: [-DENGINE_KTX, -I/usr/local/opt/emscripten/libexec/cache/sysroot/include, -I/Users/elkhantour/Documents/C/nkengine/vendor, -I/Users/elkhantour/Documents/C/nkengine/src]
 
 ---
 # Fragment specific to C++ source files

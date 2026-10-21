@@ -31,6 +31,10 @@ static void engine_update_shadow_maps(Engine *);
 
 Scene *engine_add_scene(Engine *engine, const SceneCreateDescriptor *desc) {
 
+
+    // DEBUG
+    printf("engine scene count: %u\n", engine->scenes.count);
+    
   if (engine->scenes.count >= ENGINE_SCENE_CAPACITY) {
     logger_add(LoggerFlag_Error, "Engine reached max scene capacity (%lu)",
                (unsigned long)ENGINE_SCENE_CAPACITY);

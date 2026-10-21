@@ -2,10 +2,12 @@
 
 #include <stdlib.h>
 
+#include "backend/logger.h"
 #include "core.h"
+#include "resources/loader/ktx_loader.h"
 #include "stb/stb_image.h"
 #include "stb/stb_image_resize2.h"
-#include "backend/logger.h"
+#include "utils/path.h"
 #include "webgpu/webgpu.h"
 #include "write.h"
 
@@ -44,12 +46,22 @@ texture_create_from_file(Texture *texture,
   else
     texture->channels = desc->channels;
 
-  // flip vertically so match wgpu coordinates
-  stbi_set_flip_vertically_on_load(desc->flip);
+  int width = 0, height = 0, channels = 0;
+  texture_data data = NULL;
 
-  int width, height, channels;
-  texture_data data =
-      stbi_load(desc->path, &width, &height, &channels, texture->channels);
+  if (path_has_ext(desc->path, "ktx2")) {
+#ifdef ENGINE_KTX
+    // KTX2 path always yields RGBA8
+    texture->channels = TextureChannel_RGBA;
+    data = load_ktx2_rgba8(desc->path, &width, &height);
+#else
+    logger_add(LoggerFlag_Error, "KTX2 support disabled (ENGINE_KTX off).");
+#endif
+  } else {
+    // flip vertically so match wgpu coordinates
+    stbi_set_flip_vertically_on_load(desc->flip);
+    data = stbi_load(desc->path, &width, &height, &channels, texture->channels);
+  }
 
   if (data == NULL) {
     logger_add(LoggerFlag_Error, "Couldn't load texture from file.");
@@ -69,7 +81,8 @@ texture_create_from_file(Texture *texture,
         malloc(desc->width * desc->height * texture->channels);
 
     if (n_data == NULL) {
-      logger_add(LoggerFlag_Warning, "Couldn't allocate resources for resize texture.");
+      logger_add(LoggerFlag_Warning,
+                 "Couldn't allocate resources for resize texture.");
     } else if (stbir_resize_uint8_srgb(data, width, height, 0, n_data,
                                        desc->width, desc->height, 0,
                                        (uint8_t)texture->channels) == NULL) {

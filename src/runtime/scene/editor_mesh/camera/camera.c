@@ -6,7 +6,7 @@
 #include "backend/registry.h"
 #include "backend/resource_manager.h"
 #include "backend/theme/core.h"
-#include "resources/loader/loader.mbin.h"
+#include "resources/loader/mbin.h"
 #include "runtime/camera/core.h"
 #include "runtime/geometry/vertex/attribute.h"
 #include "runtime/geometry/vertex/group.h"
