@@ -6,8 +6,9 @@
 #include "runtime/texture/create.h"
 #include "webgpu/webgpu.h"
 
-TextureStatus texture_sprite_sheet_create(TextureSpriteSheet *atlas,
-                                   const TextureSpriteSheetDescriptor *desc) {
+TextureStatus
+texture_sprite_sheet_create(TextureSpriteSheet *atlas,
+                            const TextureSpriteSheetDescriptor *desc) {
 
   if (desc->cell_count[0] > TEXTURE_SPRITE_SHEET_MAX_ROW ||
       desc->cell_count[1] > TEXTURE_SPRITE_SHEET_MAX_COL) {
@@ -49,7 +50,7 @@ TextureStatus texture_sprite_sheet_create(TextureSpriteSheet *atlas,
   });
 
   rem_write_texture(atlas->texture, texture.data, texture.size,
-                    texture.channels, 0, REMWriteFlag_STBIFreeData);
+                    texture.channels, 0, 0, REMWriteFlag_STBIFreeData);
 
   atlas->view = rem_new_view(atlas->texture, NULL);
 
@@ -61,8 +62,8 @@ TextureStatus texture_sprite_sheet_create(TextureSpriteSheet *atlas,
   return TextureStatus_Success;
 }
 
-TextureStatus texture_sprite_sheet_cell_uv(TextureSpriteSheet *atlas, ivec2 cell, vec2 uv0,
-                                    vec2 uv1) {
+TextureStatus texture_sprite_sheet_cell_uv(TextureSpriteSheet *atlas,
+                                           ivec2 cell, vec2 uv0, vec2 uv1) {
 
   if (cell[0] > atlas->cell_count[0] || cell[1] > atlas->cell_count[1]) {
     logger_add(

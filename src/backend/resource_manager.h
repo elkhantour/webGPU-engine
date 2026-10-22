@@ -35,7 +35,6 @@ typedef enum {
   REMStatus_UndefError,
 } REMStatus;
 
-
 // WGPU
 
 // clang-format off
@@ -67,7 +66,7 @@ typedef enum {
     _(ProbeReflectionPlane,   RegEntryType_ProbeReflectionPlane,    plane_reflection,             16        ) \
     _(ProbeReflection,        RegEntryType_ProbeReflection,         probe_reflection,             16        ) \
     _(ProbeReflectionGrid,    RegEntryType_ProbeReflectionGrid,     probe_reflection_grid,        16        ) \
-    _(JobSystem,              RegEntryType_JobSystem,               job_system,                    2        ) \
+    _(JobSystem,              RegEntryType_JobSystem,               job_system,                    2        )
 
 // clang-format on
 
@@ -100,7 +99,7 @@ typedef struct {
 #define _(Type, RegistryType, Label, PoolCapacity)                             \
   typedef struct {                                                             \
     size_t capacity;                                                           \
-    size_t count;                                                             \
+    size_t count;                                                              \
     Type *entries;                                                             \
   } REMPool##Type;
 
@@ -184,7 +183,7 @@ WGPUShaderModule rem_new_shader_module(char *code, const char *label,
 REMStatus rem_write_buffer(WGPUBuffer, const size_t, void *, const size_t,
                            const REMWriteFlag);
 REMStatus rem_write_texture(WGPUTexture, void *, const size_t,
-                            const TextureChannel, const size_t,
+                            const TextureChannel, const uint16_t, const uint8_t,
                             const REMWriteFlag);
 
 REMStatus rem_destroy_texture(WGPUTexture *);

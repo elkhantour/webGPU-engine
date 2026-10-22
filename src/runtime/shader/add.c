@@ -191,7 +191,7 @@ void shader_add_texture(Shader *shader,
       });
 
       rem_write_texture(tmp_texture, dest->data, dest->size, dest->channels, 0,
-                        REMWriteFlag_STBIFreeData);
+                        0, REMWriteFlag_STBIFreeData);
     }
   }
 }
@@ -288,6 +288,7 @@ void shader_add_sampler(Shader *shader,
           .minFilter = dest->minFilter,
           .magFilter = dest->magFilter,
           .mipmapFilter = dest->mipmapFilter,
+          .lodMaxClamp = 32.0f,
       });
     }
   }

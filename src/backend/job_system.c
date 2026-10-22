@@ -21,6 +21,37 @@ static Job *q_pop(JobQueue *q) {
   return j;
 }
 
+void job_system_destroy(JobSystem *js) {
+  atomic_store(&js->running, false);
+  pthread_cond_broadcast(&js->pending_cv);
+  for (int i = 0; i < js->thread_count; i++)
+    pthread_join(js->threads[i], NULL);
+  job_system_draw_callback(js);
+  free(js->threads);
+}
+
+void job_group_init(JobGroup *g, int cap) {
+  *g = (JobGroup){0};
+  g->cap = cap;
+  atomic_init(&g->active, 0);
+  atomic_init(&g->remaining, 0);
+}
+
+static void enqueue_pending(JobSystem *js, Job *j) {
+  pthread_mutex_lock(&js->pending_lock);
+  q_push(&js->pending, j);
+  pthread_mutex_unlock(&js->pending_lock);
+  pthread_cond_signal(&js->pending_cv);
+}
+
+static void group_promote(JobSystem *js, JobGroup *g) {
+  while (g->backlog.head && atomic_load(&g->active) < g->cap) {
+    Job *b = q_pop(&g->backlog);
+    atomic_fetch_add(&g->active, 1);
+    enqueue_pending(js, b);
+  }
+}
+
 static void *worker_main(void *arg) {
   JobSystem *js = arg;
   for (;;) {
@@ -35,6 +66,8 @@ static void *worker_main(void *arg) {
       break; // shutting down and queue is empty
 
     job->work(job->data);
+    if (job->group)
+      atomic_fetch_sub(&job->group->active, 1);
 
     pthread_mutex_lock(&js->completed_lock);
     q_push(&js->completed, job);
@@ -61,16 +94,22 @@ void job_system_init(JobSystem *js, int n) {
     pthread_create(&js->threads[i], NULL, worker_main, js);
 }
 
-void job_system_submit(JobSystem *js, JobWorkFn work, JobDoneFn done,
-                       void *data) {
+void job_system_submit(JobSystem *js, JobGroup *g, JobWorkFn work,
+                       JobDoneFn done, void *data) {
   Job *j = malloc(sizeof(Job));
-  *j = (Job){.work = work, .done = done, .data = data};
+  *j = (Job){.work = work, .done = done, .data = data, .group = g};
   atomic_fetch_add(&js->in_flight, 1);
 
-  pthread_mutex_lock(&js->pending_lock);
-  q_push(&js->pending, j);
-  pthread_mutex_unlock(&js->pending_lock);
-  pthread_cond_signal(&js->pending_cv);
+  if (g) {
+    atomic_fetch_add(&g->remaining, 1);
+    // keep FIFO: if anything is already backlogged, queue behind it
+    if (g->cap > 0 && (g->backlog.head || atomic_load(&g->active) >= g->cap)) {
+      q_push(&g->backlog, j);
+      return;
+    }
+    atomic_fetch_add(&g->active, 1);
+  }
+  enqueue_pending(js, j);
 }
 
 void job_system_draw_callback(void *data) {
@@ -82,18 +121,20 @@ void job_system_draw_callback(void *data) {
   js->completed = (JobQueue){0};
   pthread_mutex_unlock(&js->completed_lock);
 
-  int processed = 0;
   Job *j;
   while ((j = q_pop(&local))) {
-    if (j->done)
-      j->done(j->data);
+    JobGroup *g = j->group;
+    JobDoneFn done = j->done;
+    void *data = j->data;
     free(j);
     atomic_fetch_sub(&js->in_flight, 1);
-    processed++;
-    // (optional) check elapsed time vs budget_ms here and stop early;
-    // if you stop, push the remainder back onto js->completed.
+    if (g) {
+      group_promote(js, g); // before done(), which may destroy g
+      atomic_fetch_sub(&g->remaining, 1);
+    }
+    if (done)
+      done(data);
   }
-
 }
 
 void job_system_wait_idle(JobSystem *js) {
@@ -101,13 +142,4 @@ void job_system_wait_idle(JobSystem *js) {
     job_system_draw_callback(js);
     usleep(500);
   }
-}
-
-void job_system_destroy(JobSystem *js) {
-  atomic_store(&js->running, false);
-  pthread_cond_broadcast(&js->pending_cv);
-  for (int i = 0; i < js->thread_count; i++)
-    pthread_join(js->threads[i], NULL);
-  job_system_draw_callback(js);
-  free(js->threads);
 }

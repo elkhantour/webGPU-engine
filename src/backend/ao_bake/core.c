@@ -127,7 +127,7 @@ void ao_bake_draw_mesh(RendererTextureAO *ao, Mesh *mesh,
   if (update_bind_view) {
     ao_bake_process_texture(texture);
     rem_write_texture(ao->texture, texture->data, texture->size,
-                      texture->channels, layer, REMWriteFlag_None);
+                      texture->channels, layer, 0, REMWriteFlag_None);
   }
 }
 
@@ -147,6 +147,6 @@ void ao_bake_draw_list(RendererTextureAO *ao,
     // sampling factor the dots a too clearly visible)
     ao_bake_process_texture(texture);
     rem_write_texture(ao->texture, texture->data, texture->size,
-                      texture->channels, i, REMWriteFlag_None);
+                      texture->channels, i, 0, REMWriteFlag_None);
   }
 }

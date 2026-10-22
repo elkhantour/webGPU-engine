@@ -43,7 +43,7 @@ static inline void prefab_skybox_upload_layer(const WGPUTexture texture,
                                               const bool free) {
 
   rem_write_texture(texture, layer_texture->data, layer_texture->size,
-                    layer_texture->channels, layer_index,
+                    layer_texture->channels, layer_index, 0,
                     REMWriteFlag_STBIFreeData);
 }
 

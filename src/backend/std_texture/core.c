@@ -16,8 +16,7 @@ WGPUTexture g_std_texture[STD_TEXTURE_VIEW_COUNT] = {0};
 // black color
 static const uint8_t pixel[4] = {255, 255, 255, 255};
 
-static inline WGPUTextureView
-renderer_create_fallback_float(WGPUTexture *);
+static inline WGPUTextureView renderer_create_fallback_float(WGPUTexture *);
 
 static inline WGPUTextureView
 renderer_create_fallback_float_black(WGPUTexture *);
@@ -34,8 +33,7 @@ renderer_create_fallback_float_cube(WGPUTexture *);
 static inline WGPUTextureView
 renderer_create_fallback_float_cube_array(WGPUTexture *);
 
-static inline WGPUTextureView
-renderer_create_fallback_depth(WGPUTexture *);
+static inline WGPUTextureView renderer_create_fallback_depth(WGPUTexture *);
 
 static inline WGPUTextureView
 renderer_create_fallback_depth_cube_array(WGPUTexture *);
@@ -59,8 +57,7 @@ static const std_texture_view_create texture_creator[STD_TEXTURE_VIEW_COUNT] = {
     [TextureViewType_Float] = renderer_create_fallback_float,
     [TextureViewType_FloatBlack] = renderer_create_fallback_float_black,
     [TextureViewType_FloatNormal] = renderer_create_fallback_float_normal,
-    [TextureViewType_Float2DArray] =
-        renderer_create_fallback_float_2d_array,
+    [TextureViewType_Float2DArray] = renderer_create_fallback_float_2d_array,
     [TextureViewType_FloatCube] = renderer_create_fallback_float_cube,
     [TextureViewType_FloatCubeArray] =
         renderer_create_fallback_float_cube_array,
@@ -68,8 +65,7 @@ static const std_texture_view_create texture_creator[STD_TEXTURE_VIEW_COUNT] = {
     [TextureViewType_Depth] = renderer_create_fallback_depth,
     [TextureViewType_DepthCubeArray] =
         renderer_create_fallback_depth_cube_array,
-    [TextureViewType_Depth2DArray] =
-        renderer_create_fallback_depth_2d_array,
+    [TextureViewType_Depth2DArray] = renderer_create_fallback_depth_2d_array,
 };
 
 void standard_textures_init() {
@@ -98,13 +94,12 @@ WGPUTextureView renderer_create_fallback_float(WGPUTexture *texture) {
   });
 
   rem_write_texture(*texture, (void *)pixel, 4 * sizeof(uint32_t),
-                    TextureChannel_RGBA, 0, REMWriteFlag_None);
+                    TextureChannel_RGBA, 0, 0, REMWriteFlag_None);
 
   return rem_new_view(*texture, NULL);
 }
 
-WGPUTextureView
-renderer_create_fallback_float_normal(WGPUTexture *texture) {
+WGPUTextureView renderer_create_fallback_float_normal(WGPUTexture *texture) {
 
   *texture = rem_new_texture(&(WGPUTextureDescriptor){
       .label = "Standard Texture Float 2D Normal",
@@ -122,14 +117,13 @@ renderer_create_fallback_float_normal(WGPUTexture *texture) {
   });
 
   rem_write_texture(*texture, (uint8_t[4]){127, 127, 255, 255},
-                    4 * sizeof(uint32_t), TextureChannel_RGBA, 0,
+                    4 * sizeof(uint32_t), TextureChannel_RGBA, 0, 0,
                     REMWriteFlag_None);
 
   return rem_new_view(*texture, NULL);
 }
 
-WGPUTextureView
-renderer_create_fallback_float_black(WGPUTexture *texture) {
+WGPUTextureView renderer_create_fallback_float_black(WGPUTexture *texture) {
 
   *texture = rem_new_texture(&(WGPUTextureDescriptor){
       .label = "Standard Texture Float Black",
@@ -150,8 +144,7 @@ renderer_create_fallback_float_black(WGPUTexture *texture) {
   return rem_new_view(*texture, NULL);
 }
 
-WGPUTextureView
-renderer_create_fallback_float_2d_array(WGPUTexture *texture) {
+WGPUTextureView renderer_create_fallback_float_2d_array(WGPUTexture *texture) {
 
   *texture = rem_new_texture(&(WGPUTextureDescriptor){
       .label = "Standard Texture Float Array",
@@ -169,7 +162,7 @@ renderer_create_fallback_float_2d_array(WGPUTexture *texture) {
   });
 
   rem_write_texture(*texture, (uint8_t[]){255}, sizeof(uint32_t),
-                    TextureChannel_R, 0, REMWriteFlag_None);
+                    TextureChannel_R, 0, 0, REMWriteFlag_None);
 
   return rem_new_view(*texture,
                       &(WGPUTextureViewDescriptor){
@@ -181,8 +174,7 @@ renderer_create_fallback_float_2d_array(WGPUTexture *texture) {
                       });
 }
 
-WGPUTextureView
-renderer_create_fallback_float_cube(WGPUTexture *texture) {
+WGPUTextureView renderer_create_fallback_float_cube(WGPUTexture *texture) {
 
   *texture = rem_new_texture(&(WGPUTextureDescriptor){
       .label = "Standard Texture Float Cube",
@@ -200,7 +192,7 @@ renderer_create_fallback_float_cube(WGPUTexture *texture) {
   });
 
   rem_write_texture(*texture, (uint8_t[]){255}, sizeof(uint32_t),
-                    TextureChannel_R, 0, REMWriteFlag_None);
+                    TextureChannel_R, 0, 0, REMWriteFlag_None);
 
   return rem_new_view(*texture, &(WGPUTextureViewDescriptor){
                                     .label = "Standard View Float Cube",
@@ -230,7 +222,7 @@ renderer_create_fallback_float_cube_array(WGPUTexture *texture) {
   });
 
   rem_write_texture(*texture, (uint8_t[]){255}, sizeof(uint32_t),
-                    TextureChannel_R, 0, REMWriteFlag_None);
+                    TextureChannel_R, 0, 0, REMWriteFlag_None);
 
   return rem_new_view(*texture,
                       &(WGPUTextureViewDescriptor){
@@ -296,8 +288,7 @@ renderer_create_fallback_depth_cube_array(WGPUTexture *texture) {
                       });
 }
 
-WGPUTextureView
-renderer_create_fallback_depth_2d_array(WGPUTexture *texture) {
+WGPUTextureView renderer_create_fallback_depth_2d_array(WGPUTexture *texture) {
 
   // create texture
   *texture = rem_new_texture(&(WGPUTextureDescriptor){

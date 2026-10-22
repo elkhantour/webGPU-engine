@@ -47,7 +47,7 @@ TextureStatus texture_atlas_create(TextureAtlas *atlas,
                                        });
 
     rem_write_texture(atlas->texture, texture.data, texture.size,
-                      texture.channels, i, REMWriteFlag_STBIFreeData);
+                      texture.channels, i, 0, REMWriteFlag_STBIFreeData);
 
     atlas->view[i] = rem_new_view(atlas->texture,
                                   &(WGPUTextureViewDescriptor){

@@ -33,6 +33,11 @@ shader_update_texture(Shader *, const bind_group_index, const bind_index,
                       const ShaderUpdateTexture *, const ShaderUpdateFlag);
 
 ShaderBindGroupTextureEntry *
+shader_update_texture_mip(Shader *shader, const bind_group_index group_index,
+                          const bind_index index, const TextureMip *texture,
+                          const ShaderUpdateFlag flag);
+
+ShaderBindGroupTextureEntry *
 shader_update_texture_view(Shader *, const bind_group_index, const bind_index,
                            WGPUTextureView, WGPUTextureFormat,
                            const ShaderUpdateFlag);
@@ -50,7 +55,8 @@ shader_update_uniform_callback(Shader *, const bind_group_index,
                                const bind_index, const ShaderUniformUpdate *,
                                const ShaderUpdateFlag);
 
-// TODO: since we use 'WGPU{Type}' for all the update function, why still use the WGPU{Type}Descriptor for this one? Replace to WPGUSampler 
+// TODO: since we use 'WGPU{Type}' for all the update function, why still use
+// the WGPU{Type}Descriptor for this one? Replace to WPGUSampler
 ShaderBindGroupSamplerEntry *
 shader_update_sampler(Shader *, const bind_group_index, const bind_index,
                       const WGPUSamplerDescriptor *, const ShaderUpdateFlag);

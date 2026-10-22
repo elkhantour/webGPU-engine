@@ -14,6 +14,7 @@
 #define TEXTURE_FORMAT_ONSCREEN WGPUTextureFormat_BGRA8Unorm
 #define TEXTURE_FORMAT_DEPTH WGPUTextureFormat_Depth24Plus
 #define TEXTURE_FORMAT_DEPTH_STENCIL WGPUTextureFormat_Depth24PlusStencil8
+#define TEXTURE_MAX_MIP_COUNT 16 /* 16 levels covers up to 32768px */
 
 typedef enum {
   TextureChannel_Undefined = 0,
@@ -59,8 +60,21 @@ typedef struct {
   size_t size;
   texture_data data;
   TextureChannel channels;
-  uint8_t value;
+  uint8_t value; // TODO: check what this means ???
 } Texture;
+
+typedef struct {
+  uint8_t *data; // borrowed, points into tex's data
+  size_t size;
+} TextureMipView;
+
+typedef struct {
+  WGPUTextureFormat format;
+  uint32_t width, height; // size of mips[0] (after skipping)
+  TextureChannel channels;
+  uint32_t mip_count;
+  TextureMipView mips[TEXTURE_MAX_MIP_COUNT];
+} TextureMip;
 
 // cached textel sizes since they use expensive divide operation
 extern float g_texture_resolution_texel_size[TextureResolution_4096 + 1];

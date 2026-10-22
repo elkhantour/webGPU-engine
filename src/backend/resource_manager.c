@@ -166,8 +166,8 @@ WGPUTexture rem_new_texture(const WGPUTextureDescriptor *desc) {
 }
 
 REMStatus rem_write_texture(WGPUTexture texture, void *data, const size_t size,
-                            const TextureChannel channels, const size_t layer,
-                            const REMWriteFlag flag) {
+                            const TextureChannel channels, const uint16_t layer,
+                            const uint8_t mip_level, const REMWriteFlag flag) {
 
   if (texture == NULL) {
     logger_add(LoggerFlag_Error, "Attempting to write in undefined texture.");
@@ -180,23 +180,26 @@ REMStatus rem_write_texture(WGPUTexture texture, void *data, const size_t size,
     return REMStatus_NullResource;
   }
 
-  int width = wgpuTextureGetWidth(texture);
-  int height = wgpuTextureGetHeight(texture);
+  const uint32_t w =
+      glm_max(1, (int)(wgpuTextureGetWidth(texture) >> mip_level));
+  const uint32_t h =
+      glm_max(1, (int)(wgpuTextureGetHeight(texture) >> mip_level));
+
 
   wgpuQueueWriteTexture(context_queue(),
                         &(WGPUImageCopyTexture){
                             .texture = texture,
-                            .mipLevel = 0,
+                            .mipLevel = mip_level,
                             .origin = {0, 0, layer},
                             .aspect = WGPUTextureAspect_All,
                         },
                         data, size,
                         &(WGPUTextureDataLayout){
                             .offset = 0,
-                            .bytesPerRow = width * channels,
-                            .rowsPerImage = height,
+                            .bytesPerRow = w * channels,
+                            .rowsPerImage = h,
                         },
-                        &(WGPUExtent3D){width, height, 1});
+                        &(WGPUExtent3D){w, h, 1});
 
   if (flag & REMWriteFlag_FreeData) {
     free(data);
