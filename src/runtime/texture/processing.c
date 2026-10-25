@@ -3,22 +3,25 @@
 #include <float.h>
 #include <math.h>
 
+#include "backend/logger.h"
+#include "runtime/texture/core.h"
 #include "utils/math.h"
+#include <stb/stb_image.h>
+#include <stb/stb_image_resize2.h>
 
 /**
    Blur algorithm
    https://stackoverflow.com/questions/21418892/understanding-super-fast-blur-algorithm
    https://developer.apple.com/documentation/accelerate/blurring-an-image
  */
-void texture_blur(const Texture *src, int kernel_size, float sigma,
-                  unsigned char **dest) {
+TextureStatus texture_blur(Texture *src, int kernel_size, float sigma) {
 
   // texture attributes
   int w = src->width;
   int h = src->height;
   int channels = src->channels;
   unsigned char *in = src->data;
-  unsigned char *out = *dest;
+  unsigned char *out = src->data;
 
   // blur attributes
   int k = kernel_size / 2;
@@ -93,17 +96,19 @@ void texture_blur(const Texture *src, int kernel_size, float sigma,
       }
     }
   }
+
+  return TextureStatus_Success;
 }
 
-void texture_contrast(const Texture *source, float contrast,
-                      texture_data *destination) {
+TextureStatus texture_contrast(Texture *source, float contrast) {
 
   unsigned int w = source->width;
   unsigned int h = source->height;
   unsigned int channels = source->channels;
+  texture_data dest = source->data;
 
   for (int i = 0; i < w * h; ++i) {
-    texture_data pixel = *destination + i * channels;
+    texture_data pixel = dest + i * channels;
 
     for (int c = 0; c < MIN(channels, 3); c++) {
       float v = pixel[c] / 255.0f;
@@ -113,15 +118,17 @@ void texture_contrast(const Texture *source, float contrast,
       pixel[c] = (unsigned char)(v * 255.0f);
     }
   }
+
+  return TextureStatus_Success;
 }
 /**
  */
-void texture_remap(const Texture *source, int min, int max,
-                   texture_data *destination) {
+TextureStatus texture_remap(Texture *source, int min, int max) {
 
   unsigned int w = source->width;
   unsigned int h = source->height;
   unsigned int channels = source->channels;
+  texture_data dest = source->data;
 
   float old_min = FLT_MAX;
   float old_max = -FLT_MAX;
@@ -138,7 +145,7 @@ void texture_remap(const Texture *source, int min, int max,
 
   // solid color, no need for remap
   if (old_max == old_min)
-    return;
+    return TextureStatus_Success;
 
   float old_range = old_max - old_min;
 
@@ -150,7 +157,7 @@ void texture_remap(const Texture *source, int min, int max,
   // remap
   for (int i = 0; i < w * h; ++i) {
     texture_data source_pixel = source->data + i * channels;
-    texture_data dst_pixel = *destination + i * channels;
+    texture_data dst_pixel = dest + i * channels;
 
     for (int c = 0; c < MIN(channels, 3); ++c) {
       float v = source_pixel[c] / 255.0f;
@@ -160,4 +167,49 @@ void texture_remap(const Texture *source, int min, int max,
       dst_pixel[c] = (unsigned char)(v * 255.0f);
     }
   }
+
+  return TextureStatus_Success;
+}
+
+TextureStatus texture_downscale(Texture *texture, const TextureResolution width,
+                                const TextureResolution height) {
+
+  int w = texture->width;
+  int h = texture->height;
+  texture_data dest = texture->data;
+
+  if (w <= width && h <= height)
+    return TextureStatus_Success;
+
+  int n_w = width;
+  int n_h = height;
+  if (w > h)
+    n_h = (int)((float)h * height / w);
+  else
+    n_w = (int)((float)w * width / h);
+  n_w = glm_max(1, n_w);
+  n_h = glm_max(1, n_h);
+
+  unsigned char *n_data = malloc((size_t)n_w * n_h * texture->channels);
+  if (!n_data) {
+    logger_add(LoggerFlag_Warning,
+               "GLTF Loader couldn't allocate resources for resize texture.");
+    return TextureStatus_AllocFail;
+  }
+
+  if (!stbir_resize_uint8_srgb(texture->data, texture->width, texture->height,
+                               0, n_data, n_w, n_h, 0,
+                               (uint8_t)texture->channels)) {
+    logger_add(LoggerFlag_Warning, "GLTF Loader STBI resize texture fail.");
+    free(n_data);
+    return TextureStatus_UndefError;
+  }
+
+  stbi_image_free(texture->data);
+  texture->data = n_data;
+  texture->width = n_w;
+  texture->height = n_h;
+  texture->size = texture->width * texture->height * texture->channels;
+
+  return TextureStatus_Success;
 }

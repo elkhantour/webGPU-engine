@@ -24,12 +24,12 @@ public DirectLighting accumulate_lights(Material material, ConstantBuffer<LightL
     for (uint i = 0u; i < lights.point_count; i++)
     {
         PointLight l = lights.point_entries[i];
-        r.Lo += compute_point_light(material, frag, world_normal, cam_pos, l.position, l.color, l.intensity);
+        //r.Lo += compute_point_light(material, frag, world_normal, cam_pos, l.position, l.color, l.intensity);
     }
     for (uint i = 0u; i < lights.spot_count; i++)
     {
         SpotLight l = lights.spot_entries[i];
-        r.Lo += compute_point_light(material, frag, world_normal, cam_pos, l.position, l.color, l.intensity);
+        //r.Lo += compute_point_light(material, frag, world_normal, cam_pos, l.position, l.color, l.intensity);
     }
     for (uint i = 0u; i < lights.sun_count; i++)
     {

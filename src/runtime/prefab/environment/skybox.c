@@ -7,6 +7,7 @@
 #include "backend/resource_manager.h"
 #include "backend/shaders/core.h"
 #include "runtime/engine/add.h"
+#include "runtime/engine/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/shader/core.h"
 #include "runtime/pipeline/render.h"
@@ -18,7 +19,9 @@
 #include "runtime/shader/core.h"
 #include "runtime/shader/update.h"
 #include "runtime/systems/scene_system.h"
+#include "runtime/texture/async.h"
 #include "runtime/texture/core.h"
+#include "runtime/texture/create.h"
 #include "stb/stb_image.h"
 #include "webgpu/webgpu.h"
 #include <stdint.h>
@@ -37,11 +40,9 @@ static inline void prefab_skybox_create_from_texture(Engine *,
 /**
    Upload the skybox side to the gpu (write to texture at given layer index)
  */
-static inline void prefab_skybox_upload_layer(const WGPUTexture texture,
-                                              const Texture *layer_texture,
-                                              const size_t layer_index,
-                                              const bool free) {
-
+void prefab_skybox_upload_layer(const WGPUTexture texture,
+                                const Texture *layer_texture,
+                                const size_t layer_index, const bool free) {
   rem_write_texture(texture, layer_texture->data, layer_texture->size,
                     layer_texture->channels, layer_index, 0,
                     REMWriteFlag_STBIFreeData);
@@ -155,11 +156,20 @@ void prefab_skybox_create_from_texture(Engine *engine,
                         EngineAddFlag_Unselectable | EngineAddFlag_TreeHide);
 }
 
-/**
-   Create a skybox from a list of 6 textures.
- */
-void prefab_skybox_create(Engine *engine,
-                          const PrefabSkyboxCreateDescriptor *desc) {
+typedef struct {
+  Engine *engine;
+  uint8_t blur;
+  TextureResolution resolution;
+} SkyboxJob;
+
+static void on_texture_job_done(TextureStatus status, const Texture *texture,
+                                void *data) {
+
+  SkyboxJob *job = (SkyboxJob *)data;
+  const Texture *textures = texture;
+  const uint8_t blur = job->blur;
+  const TextureResolution resolution = job->resolution;
+  Engine *engine = job->engine;
 
   Scene *scene = engine_get_active_scene(engine);
   Renderer *renderer = engine_get_renderer(engine);
@@ -169,24 +179,44 @@ void prefab_skybox_create(Engine *engine,
       scene_environment_skybox(&scene->environment);
 
   WGPUTexture *skybox_texture = &scene_skybox->texture;
-  WGPUTextureView *skybox_cubemap_view = &scene_skybox->view;
+  WGPUTextureView *skybox_view = &scene_skybox->view;
 
-  *skybox_texture = prefab_skybox_texture(desc->resolution);
-
-  Texture skybox_sides[TEXTURE_CUBE_LAYER];
-  texture_create_cubemap_from_file(skybox_sides,
-                                   &(TextureCreateCubeMapDescriptor){
-                                       .path = &desc->path,
-                                       .format = TEXTURE_FORMAT_OFFSCREEN,
-                                       .resolution = desc->resolution,
-                                   });
+  *skybox_texture = prefab_skybox_texture(resolution);
 
   for (uint8_t i = 0; i < TEXTURE_CUBE_LAYER; i++)
-    prefab_skybox_upload_layer(*skybox_texture, &skybox_sides[i], i, false);
+    prefab_skybox_upload_layer(*skybox_texture, &textures[i], i, false);
 
-  prefab_skybox_create_from_texture(engine, *skybox_texture,
-                                    skybox_cubemap_view, desc->resolution,
-                                    desc->blur);
+  prefab_skybox_create_from_texture(engine, *skybox_texture, skybox_view,
+                                    resolution, blur);
+
+  free(job);
+}
+
+/**
+   Create a skybox from a list of 6 textures.
+ */
+void prefab_skybox_create(Engine *engine,
+                          const PrefabSkyboxCreateDescriptor *desc) {
+
+  SkyboxJob *job = calloc(1, sizeof(SkyboxJob));
+
+  if (!job) {
+    logger_add(LoggerFlag_Error,
+               "Couldn't allocate data for skybox generation.");
+    return;
+  }
+
+  job->engine = engine;
+  job->blur = desc->blur;
+  job->resolution = desc->resolution;
+
+  texture_create_cubemap_from_file_async(engine_get_job_system(engine),
+                                         &(TextureCreateCubeMapDescriptor){
+                                             .path = &desc->path,
+                                             .format = TEXTURE_FORMAT_OFFSCREEN,
+                                             .resolution = desc->resolution,
+                                         },
+                                         on_texture_job_done, (void *)job);
 }
 
 /**

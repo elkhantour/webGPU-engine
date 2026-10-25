@@ -36,12 +36,22 @@ typedef enum {
   TextureResolution_4096 = 4096,
 } TextureResolution;
 
+typedef enum {
+  TextureCubeMapSide_Right,  // +X
+  TextureCubeMapSide_Left,   // -X
+  TextureCubeMapSide_Top,    // +Y
+  TextureCubeMapSide_Bottom, // -Y
+  TextureCubeMapSide_Front,  // +z
+  TextureCubeMapSide_Back,   // -Z
+} TextureCubeMapSide;
+
 typedef TextureResolution texture_size_t[2];
 
 typedef enum {
   TextureStatus_Success,
   TextureStatus_AllocFail,
   TextureStatus_FileError,
+  TextureStatus_Pending,
   TextureStatus_CellOutOfBound,
   TextureStatus_UndefError,
 } TextureStatus;

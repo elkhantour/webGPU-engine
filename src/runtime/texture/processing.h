@@ -5,9 +5,10 @@
 
 EXTERN_C_BEGIN
 
-void texture_blur(const Texture *, int, float, texture_data *);
-void texture_contrast(const Texture *, float, texture_data *);
-void texture_remap(const Texture *, int, int, texture_data *);
+TextureStatus texture_blur(Texture *, int, float);
+TextureStatus texture_contrast(Texture *, float);
+TextureStatus texture_remap(Texture *, int, int);
+TextureStatus texture_downscale(Texture *, const TextureResolution,  const TextureResolution);
 
 EXTERN_C_END
 

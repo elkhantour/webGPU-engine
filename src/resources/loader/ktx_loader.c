@@ -2,6 +2,8 @@
 
 #include "backend/logger.h"
 #include <ktx.h>
+#include <stdint.h>
+#include <string.h>
 #include <strings.h>
 
 /* ---------- shared statics ---------- */
@@ -150,7 +152,8 @@ LoaderKTXStatus ktx_texture_load(ktxTexture2 **out, const char *path,
  * @note Only layer 0 / face 0 is exposed.
  */
 LoaderKTXStatus ktx_texture_get_mips(ktxTexture2 *tex, int max_size,
-                                     TextureMip *out) {
+                                     TextureMip *out,
+                                     const LoaderKTXMemory memory) {
   memset(out, 0, sizeof *out);
   if (!tex)
     return LoaderKTXStatus_FailLoad;
@@ -161,8 +164,23 @@ LoaderKTXStatus ktx_texture_get_mips(ktxTexture2 *tex, int max_size,
   if (count > TEXTURE_MAX_MIP_COUNT)
     count = TEXTURE_MAX_MIP_COUNT;
 
-  for (uint32_t i = 0; i < count; i++)
-    out->mips[i].data = ktx_level_data(tex, first + i, &out->mips[i].size);
+  for (uint32_t i = 0; i < count; i++) {
+
+    const unsigned char *mip_data =
+        ktx_level_data(tex, first + i, &out->mips[i].size);
+    if (memory == LoaderKTXMemory_ShareData) {
+      out->mips[i].data = mip_data;
+    } else {
+      out->mips[i].data = calloc(1, sizeof(out->mips[i].size));
+      if (out->mips[i].data) {
+        memcpy(out->mips[i].data, mip_data, sizeof(out->mips[i].size));
+      } else {
+        logger_add(LoggerFlag_Error,
+                   "[KTX Loader] Unable to allocate data for mip %d.", i);
+        return LoaderKTXStatus_FailAlloc;
+      }
+    }
+  }
 
   out->mip_count = count;
   out->channels = TextureChannel_RGBA;
@@ -183,7 +201,8 @@ unsigned char *load_ktx2(const char *path, const unsigned char *mem,
   TextureMip mip;
   unsigned char *out = NULL;
 
-  if (ktx_texture_get_mips(tex, max_size, &mip) == LoaderKTXStatus_Success) {
+  if (ktx_texture_get_mips(tex, max_size, &mip, LoaderKTXMemory_ShareData) ==
+      LoaderKTXStatus_Success) {
     out = malloc(mip.mips[0].size);
     if (out) {
       memcpy(out, mip.mips[0].data, mip.mips[0].size);

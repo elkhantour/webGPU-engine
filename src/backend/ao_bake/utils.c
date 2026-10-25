@@ -144,10 +144,10 @@ void ao_bake_mesh_triangle(Triangle *triangle, Mesh *mesh, size_t index) {
 }
 
 void ao_bake_process_texture(Texture *texture) {
-  texture_remap(texture, 0, 1, &texture->data);
+  texture_remap(texture, 0, 1);
 
   // 1st pass blur
-  texture_blur(texture, 3, 1.0f, &texture->data);
+  texture_blur(texture, 3, 1.0f);
   // 2nd pass blur
-  texture_blur(texture, 3, 1.0f, &texture->data);
+  texture_blur(texture, 3, 1.0f);
 }

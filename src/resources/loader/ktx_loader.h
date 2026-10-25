@@ -9,18 +9,25 @@
 
 typedef enum {
   LoaderKTXStatus_Success,
+  LoaderKTXStatus_FailAlloc,
   LoaderKTXStatus_FailLoad,
   LoaderKTXStatus_FailTranscode,
   LoaderKTXStatus_UnsupportedFormat,
   LoaderKTXStatus_UndefError,
 } LoaderKTXStatus;
 
+typedef enum {
+  LoaderKTXMemory_ShareData,
+  LoaderKTXMemory_CopyData,
+} LoaderKTXMemory;
+
 LoaderKTXStatus ktx_texture_destroy(ktxTexture2 **);
 
 LoaderKTXStatus ktx_texture_load(ktxTexture2 **, const char *,
                                  const unsigned char *, size_t);
 
-LoaderKTXStatus ktx_texture_get_mips(ktxTexture2 *, int, TextureMip *);
+LoaderKTXStatus ktx_texture_get_mips(ktxTexture2 *, int, TextureMip *,
+                                     const LoaderKTXMemory);
 
 unsigned char *load_ktx2(const char *, const unsigned char *, size_t, int *,
                          int *, int *, int);
