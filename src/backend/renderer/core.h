@@ -85,11 +85,6 @@
 typedef struct Renderer Renderer;
 
 typedef enum {
-  RendererMeshStates_Hidden,
-} RendererMeshStates;
-#define RENDERER_MESH_STATE_COUNT 1
-
-typedef enum {
   RendererStatus_Success,
   RendererStatus_MeshVisible,
   RendererStatus_MeshHidden,
@@ -143,15 +138,6 @@ struct Renderer {
 
   ComputePass compute_pass;
 
-  /*
-  Versatile list used to store mesh pointers depending on numerous states
-  (such as built, hidden...). Having such array allows to:
-    - Prevent having booleans polluting the Mesh struct
-    - Data-Oriented friendly approach so each Meshes with the same states can
-      be easily access and given per array instructions.
-    - Faster access to meshes sharing the same states.
- */
-  MeshRefList mesh_state[RENDERER_MESH_STATE_COUNT];
 };
 
 EXTERN_C_BEGIN
@@ -200,10 +186,6 @@ renderer_multisample(Renderer *rd) {
   return rd->multisample;
 }
 
-static inline MeshRefList *renderer_mesh_state(Renderer *rd,
-                                               const RendererMeshStates state) {
-  return &rd->mesh_state[state];
-}
 
 // mutators
 

@@ -171,9 +171,10 @@ LoaderKTXStatus ktx_texture_get_mips(ktxTexture2 *tex, int max_size,
     if (memory == LoaderKTXMemory_ShareData) {
       out->mips[i].data = mip_data;
     } else {
-      out->mips[i].data = calloc(1, sizeof(out->mips[i].size));
+      const size_t mip_size = out->mips[i].size;
+      out->mips[i].data = malloc(mip_size);
       if (out->mips[i].data) {
-        memcpy(out->mips[i].data, mip_data, sizeof(out->mips[i].size));
+        memcpy(out->mips[i].data, mip_data, mip_size);
       } else {
         logger_add(LoggerFlag_Error,
                    "[KTX Loader] Unable to allocate data for mip %d.", i);
@@ -186,6 +187,7 @@ LoaderKTXStatus ktx_texture_get_mips(ktxTexture2 *tex, int max_size,
   out->channels = TextureChannel_RGBA;
   ktx_level_extent(tex, first, &out->width, &out->height);
   out->format = ktx_wgpu_format(tex);
+
   return LoaderKTXStatus_Success;
 }
 

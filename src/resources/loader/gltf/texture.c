@@ -51,8 +51,12 @@ static LoaderGLTFStatus load_from_uri(cgltf_image *image, const char *root_dir,
   else
     snprintf(path, sizeof(path), "%s", image->uri);
 
-  texture_mip_create_from_file(out_mip,
-                               &(TextureCreateFileDescriptor){.path = path});
+  texture_mip_create_from_file(out_mip, &(TextureCreateFileDescriptor){
+                                            // TODO set max-size AUTO
+                                            .width = max_size,
+                                            .height = max_size,
+                                            .path = path,
+                                        });
 
   return LoaderGLTFStatus_Success;
 }
@@ -70,6 +74,8 @@ static LoaderGLTFStatus load_from_buffer_view(cgltf_image *image, int max_size,
   texture_mip_create_from_memory(out_mip, &(TextureCreateMemoryDescriptor){
                                               .data = data,
                                               .size = size,
+                                              .width = max_size,
+                                              .height = max_size,
                                           });
 
   return LoaderGLTFStatus_Success;
@@ -295,5 +301,4 @@ void texture_load_worker_done(void *data) {
 
   free(job);
   loader_gltf_attempt_release(ctx);
-
 }

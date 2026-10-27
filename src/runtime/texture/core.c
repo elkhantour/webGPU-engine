@@ -36,7 +36,7 @@ WGPUTexture texture_mip_upload(const TextureMip *textures) {
                full < TEXTURE_MAX_MIP_COUNT ? full : TEXTURE_MAX_MIP_COUNT);
     mip_count = full < TEXTURE_MAX_MIP_COUNT ? full : TEXTURE_MAX_MIP_COUNT;
   }
-
+  
   WGPUTexture gpu_texture = rem_new_texture(&(WGPUTextureDescriptor){
       .label = "Anonymous shader bindgroup texture (mip)",
       .dimension = WGPUTextureDimension_2D,

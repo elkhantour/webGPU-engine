@@ -258,8 +258,9 @@ void build_mesh_wireframe(Scene *scene, Mesh *mesh, Renderer *renderer,
   job->src = mesh_topology_base_vertex(&mesh->topology.base);
   job->mesh_generation = 0; // TODO: remove it?
 
-  job_system_submit(job_system, wireframe_group, wireframe_worker_start,
-                    wireframe_worker_done, job);
+  // DEBUG
+  //job_system_submit(job_system, wireframe_group, wireframe_worker_start,
+  //                  wireframe_worker_done, job);
 }
 
 /**

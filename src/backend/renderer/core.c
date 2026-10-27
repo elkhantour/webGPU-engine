@@ -31,7 +31,6 @@
 
 static void renderer_render(void *);
 
-static inline void renderer_mesh_list_init(Renderer *);
 
 typedef RenderPassLayoutListDescriptor
     renderer_draw_lists[RENDERER_DRAW_MODE_COUNT][RENDERER_LAYER_COUNT];
@@ -69,21 +68,11 @@ void renderer_create(Renderer *renderer, const RendererCreateDescriptor *desc) {
     callback, we won't need such functions.
  */
 void renderer_create_layouts(Renderer *renderer) {
-  renderer_mesh_list_init(renderer);
   renderer_draw_lists draw_lists = {0};
   renderer_pass_layout_from_batch(renderer, draw_lists);
   renderer_pass_create(renderer, draw_lists);
 }
 
-/**
-   Initialize scene mesh pool as well as pipelines
- */ 
-void renderer_mesh_list_init(Renderer *rd) {
-
-  for (RendererMeshStates m = 0; m < RENDERER_MESH_STATE_COUNT; m++)
-    mesh_ref_list_create(renderer_mesh_state(rd, m),
-                         SCENE_MESH_LIST_DEFAULT_CAPACITY);
-}
 
 void renderer_destroy(Renderer *renderer) {}
 
