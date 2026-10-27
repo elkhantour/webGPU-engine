@@ -56,6 +56,7 @@ EXTERN_C_BEGIN
 TextureStatus texture_create(Texture *, const TextureCreateDescriptor *);
 
 TextureStatus texture_destroy(Texture *);
+TextureStatus texture_mip_destroy(TextureMip *);
 TextureStatus texture_create_from_file(Texture *,
                                        const TextureCreateFileDescriptor *);
 

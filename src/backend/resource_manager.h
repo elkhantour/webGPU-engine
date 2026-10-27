@@ -115,7 +115,7 @@ Add the following entities ?
  */
 typedef struct ResourceManager {
 
-  FreeList pools[REM_TYPE_COUNT];
+  FREE_LIST(void *) pools[REM_TYPE_COUNT];
   HashTable hash_table;
 
 } ResourceManager;

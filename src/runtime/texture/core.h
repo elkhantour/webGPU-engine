@@ -103,6 +103,8 @@ static inline float texture_size_texel(const TextureResolution size) {
   return g_texture_resolution_texel_size[size];
 }
 
+WGPUTexture texture_mip_upload(const TextureMip *);
+
 EXTERN_C_END
 
 #endif

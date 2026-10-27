@@ -27,4 +27,18 @@ void vertex_index_destroy(VertexIndex *);
 VertexStatus vertex_index_create(VertexIndex *, size_t, WGPUBuffer);
 VertexStatus vertex_index_insert(VertexIndex *, vindex_t *, size_t);
 
+/**
+   Only free the CPU data, do not remove GPU buffer, to clear the buffer use
+   vertex_index_destroy()
+ */
+static inline void vertex_index_free_data(VertexIndex *vertex_index) {
+  if (vertex_index->entries != NULL)
+    return;
+
+  free(vertex_index->entries);
+  vertex_index->entries = NULL;
+  vertex_index->capacity = 0;
+  vertex_index->count = 0;
+}
+
 #endif

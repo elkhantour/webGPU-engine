@@ -17,6 +17,7 @@
 #include "backend/shaders/core.h"
 #include "backend/shaders/include/pbr.h"
 #include "backend/std_texture/core.h"
+
 #include "runtime/geometry/vertex/attribute.h"
 #include "runtime/geometry/vertex/core.h"
 #include "runtime/geometry/vertex/index.h"
@@ -60,7 +61,6 @@ typedef struct {
   const LoaderGLTFOptions *options;
   LoaderGLTFResult *result;
   LoaderGLTFContext *context;
-  JobGroup *group;
 
   Engine *engine;
   Mesh *parent;
@@ -72,20 +72,20 @@ typedef struct {
 
 // context
 void loader_gltf_attempt_release(LoaderGLTFContext *ctx) {
+
   if (ctx->mesh_pending > 0 || ctx->texture_pending > 0)
     return;
 
-  for (int i = 0; i < ctx->textures.count; i++) {
-    dyli_free((void *)&ctx->textures.entries[i].waiters.entries,
-              &ctx->textures.entries[i].waiters.capacity,
-              &ctx->textures.entries[i].waiters.count);
-  }
+  for (int i = 0; i < ctx->textures.count; i++)
+    texture_slot_free(&ctx->textures.entries[i]);
 
   dyli_free((void *)&ctx->textures.entries, &ctx->textures.capacity,
             &ctx->textures.count);
 
   cgltf_free(ctx->data);
   free(ctx);
+
+
 }
 
 static void ctx_init(LoaderGLTFContext *ctx, const char *root_path,
@@ -315,9 +315,7 @@ void mesh_load_worker_done(void *data) {
   bind_uniforms(mesh, material, options);
 
   engine_scene_add_mesh(engine, mesh, NULL, EngineAddFlag_None);
-
-  if (--ctx->mesh_pending == 0)
-    free(job->group);
+  --ctx->mesh_pending;
 
   free(job);
   loader_gltf_attempt_release(ctx);
@@ -355,9 +353,6 @@ LoaderGLTFStatus create_mesh(LoaderGLTFContext *ctx, Engine *engine,
 
   cgltf_mesh *gl_mesh = gl_node->mesh;
 
-  JobGroup *mesh_group = calloc(1, sizeof(JobGroup));
-  job_group_init(mesh_group, 0);
-
   for (size_t p = 0; p < gl_mesh->primitives_count; p++) {
 
     cgltf_primitive current_primitive = gl_mesh->primitives[p];
@@ -369,7 +364,6 @@ LoaderGLTFStatus create_mesh(LoaderGLTFContext *ctx, Engine *engine,
       job->gltf_mesh = gl_mesh;
       job->gltf_node = gl_node;
       job->engine = engine;
-      job->group = mesh_group;
       job->options = options;
       job->context = ctx;
       job->result = result;
@@ -379,7 +373,7 @@ LoaderGLTFStatus create_mesh(LoaderGLTFContext *ctx, Engine *engine,
     }
 
     ctx->mesh_pending++;
-    job_system_submit(engine->job_system, mesh_group, mesh_load_worker_start,
+    job_system_submit(engine->job_system, NULL, mesh_load_worker_start,
                       mesh_load_worker_done, job);
   }
 

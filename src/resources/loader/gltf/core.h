@@ -37,8 +37,11 @@ typedef struct {
 
 typedef struct {
   LoaderGLTFTextureState state;
-  char *name;
-  TextureMip texture;
+  char *name;           // shared from gltf node name
+  TextureMip texture;   // Destroyed on done to free space for other textures
+  WGPUTextureView view; // Kept until binding is done (very very end)
+  WGPUTextureFormat format; // Kept until binding is done (very very end)
+
   DYNAMIC_LIST(LoaderGLTFTextureWaiter)
   waiters; // mesh requiring the texture when it wasn't loaded
 } LoaderGLTFTexture;

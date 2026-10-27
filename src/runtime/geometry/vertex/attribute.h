@@ -48,5 +48,20 @@ void vertex_attribute_set_uv_add(VertexAttribute *, const vertex_uv);
 VertexStatus vertex_attribute_copy(VertexAttribute *, VertexAttribute *);
 void vertex_attribute_destroy(VertexAttribute *);
 
+/**
+   Only free the CPU data, do not remove GPU buffer, to clear the buffer use
+   vertex_attribute_destroy()
+ */
+static inline void
+vertex_attribute_free_data(VertexAttribute *vertex_attribute) {
+  if (vertex_attribute->entries != NULL)
+    return;
+
+  free(vertex_attribute->entries);
+  vertex_attribute->entries = NULL;
+  vertex_attribute->capacity = 0;
+  vertex_attribute->count = 0;
+}
+
 EXTERN_C_END
 #endif

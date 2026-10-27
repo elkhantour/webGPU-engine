@@ -7,6 +7,7 @@
 
 #include "backend/context.h"
 #include "core.h"
+#include "runtime/texture/core.h"
 #include "webgpu/webgpu.h"
 
 #define SHADER_BIND_VALID 0
@@ -33,5 +34,6 @@ static inline size_t shader_device_max_uniform_size() {
   wgpuDeviceGetLimits(context_device(), &limits);
   return limits.limits.maxUniformBufferBindingSize;
 }
+
 
 #endif

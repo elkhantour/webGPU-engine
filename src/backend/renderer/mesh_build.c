@@ -9,6 +9,7 @@
 #include "runtime/mesh/shader/core.h"
 #include "runtime/mesh/shader/texture.h"
 #include "runtime/mesh/topology/boundbox.h"
+#include "runtime/mesh/topology/wireframe.h"
 #include "runtime/pipeline/render.h"
 #include "runtime/systems/mesh_route_system.h"
 
@@ -156,6 +157,7 @@ typedef struct {
   Scene *scene;
   Mesh *mesh;
   Renderer *renderer;
+  JobGroup *group;
   MeshTopology src;             // read-only view of base topology
   MeshTopologyWireframe result; // worker writes here, NOT into the mesh
   uint32_t mesh_generation;     // detects mesh destroyed/rebuilt meanwhile
@@ -173,6 +175,7 @@ static void wireframe_worker_start(void *data) {
 // ---- main thread: GPU side
 static void wireframe_worker_done(void *data) {
   WireframeJob *job = data;
+  JobGroup *group = job->group;
   Mesh *mesh = job->mesh;
   Scene *scene = job->scene;
   Renderer *renderer = job->renderer;
@@ -188,6 +191,11 @@ static void wireframe_worker_done(void *data) {
 
   mesh_topology_wireframe_upload(&mesh->topology.wireframe);
 
+  // free the vertex attribute and index cpu data (else memory overflow)
+  MeshTopology topo = mesh_topology_wireframe(mesh);
+  vertex_attribute_free_data(topo.attribute);
+  vertex_index_free_data(topo.index);
+
   if (mesh_shader_create_standard(mesh, MeshShader_Wireframe) ==
       MeshStatus_Success) {
     float line_thickness = LINE_THICKNESS_BASE;
@@ -201,6 +209,9 @@ static void wireframe_worker_done(void *data) {
 
   // refresh mesh in render pass cause we updated it's vertex/index buffer
   mesh_route_system_refresh_mesh(renderer, mesh);
+
+  if (group->remaining == 0)
+    free(group);
 
   free(job);
 }
@@ -235,17 +246,20 @@ void build_mesh_wireframe(Scene *scene, Mesh *mesh, Renderer *renderer,
 
   mesh_topology_wireframe_upload(&mesh->topology.wireframe);
 
+  JobGroup *wireframe_group = calloc(1, sizeof(JobGroup));
+  job_group_init(wireframe_group, 2);
+
   // Create a worker for the wireframe creation (can be expensive for highpoly)
   WireframeJob *job = calloc(1, sizeof(*job));
   job->scene = scene;
   job->renderer = renderer;
+  job->group = wireframe_group;
   job->mesh = mesh;
   job->src = mesh_topology_base_vertex(&mesh->topology.base);
   job->mesh_generation = 0; // TODO: remove it?
 
-  // DEBUG
-  //job_system_submit(job_system, wireframe_worker_start, wireframe_worker_done,
-  //                  job);
+  job_system_submit(job_system, wireframe_group, wireframe_worker_start,
+                    wireframe_worker_done, job);
 }
 
 /**

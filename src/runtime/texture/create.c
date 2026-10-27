@@ -1,5 +1,6 @@
 #include "create.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -98,7 +99,8 @@ static TextureStatus load_ktx(const char *path, const unsigned char *mem,
 }
 #endif
 
-TextureStatus texture_create(Texture *texture, const TextureCreateDescriptor *desc) {
+TextureStatus texture_create(Texture *texture,
+                             const TextureCreateDescriptor *desc) {
 
   // if (texture->data)
   // texture_free(texture);
@@ -124,6 +126,15 @@ TextureStatus texture_create(Texture *texture, const TextureCreateDescriptor *de
 TextureStatus texture_destroy(Texture *texture) {
   stbi_image_free(texture->data);
   *texture = (Texture){0};
+
+  return TextureStatus_Success;
+}
+
+TextureStatus texture_mip_destroy(TextureMip *texture) {
+  for (mip_t i = 0; i < texture->mip_count; i++) {
+    stbi_image_free(texture->mips[i].data);
+  }
+  *texture = (TextureMip){0};
 
   return TextureStatus_Success;
 }

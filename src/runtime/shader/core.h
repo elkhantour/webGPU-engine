@@ -40,6 +40,11 @@
 // fixed shader
 #define SHADER_FIXED_BINDGROUP_VIEWS 0
 
+typedef enum {
+  ShaderStatus_Success,
+  ShaderStatus_UndefError,
+} ShaderStatus;
+
 // descriptors
 typedef struct {
   const char *path;

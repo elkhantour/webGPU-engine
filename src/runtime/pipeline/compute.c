@@ -51,9 +51,6 @@ void compute_pipeline_build(ComputePipeline *pipeline,
                                     .entryPoint = "main",
                                 },
                         });
-
-  // DEBUG
-  printf("Pipeline Module: %p\n", pipeline->module);
 }
 
 /**

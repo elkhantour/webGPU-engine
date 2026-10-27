@@ -1,9 +1,9 @@
 #include "core.h"
 
-#include <stddef.h>
-#include <string.h>
 #include <cglm/ivec2.h>
+#include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "backend/logger.h"
 #include "utils/vector/core.h"
@@ -30,12 +30,45 @@ void edge_hash_set_create(EdgeHashSet *set, size_t capacity) {
   set->count = 0;
 
   if (set->entries == NULL) {
-    logger_add(LoggerFlag_Print, "Couldn't allocate memory for new hash set.\n");
+    logger_add(LoggerFlag_Print,
+               "Couldn't allocate memory for new hash set.\n");
     set->capacity = 0;
     return;
   }
 
   set->capacity = capacity;
+}
+
+static bool edge_hash_set_grow(EdgeHashSet *set) {
+  size_t new_capacity = set->capacity * 2;
+
+  EdgeBucket *new_entries = calloc(new_capacity, sizeof(EdgeBucket));
+  size_t *new_occupied = malloc(new_capacity * sizeof(size_t));
+  if (!new_entries || !new_occupied) {
+    free(new_entries);
+    free(new_occupied);
+    return false;
+  }
+
+  // reinsert existing keys using the new capacity, preserving insertion order
+  for (size_t i = 0; i < set->count; i++) {
+    EdgeBucket *old = &set->entries[set->occupied[i]];
+
+    size_t index = edge_key_hash(old->key, new_capacity);
+    while (new_entries[index].occupied)
+      index = (index + 1) % new_capacity;
+
+    glm_ivec2_copy(old->key, new_entries[index].key);
+    new_entries[index].occupied = true;
+    new_occupied[i] = index;
+  }
+
+  free(set->entries);
+  free(set->occupied);
+  set->entries = new_entries;
+  set->occupied = new_occupied;
+  set->capacity = new_capacity;
+  return true;
 }
 
 void edge_hash_set_destroy(EdgeHashSet *set) {
@@ -54,32 +87,9 @@ bool edge_hash_set_insert(EdgeHashSet *set, EdgeKey key) {
     return false;
 
   // check capacity
-  if (set->count >= set->capacity * 0.75) {
-    /*
-      If count reach 75% of capacity we expand list as beyond 75%
-      the probing performance become heavier
-     */
-    size_t new_capacity = set->capacity * 2;
-    EdgeBucket *temp = realloc(set->entries, new_capacity * sizeof(EdgeBucket));
-    size_t *temp_occupied =
-        realloc(set->occupied, new_capacity * sizeof(size_t));
-
-    if (temp && temp_occupied) {
-      set->entries = temp;
-      set->occupied = temp_occupied;
-
-      // set new entries to 0
-      memset(&set->entries[set->capacity], 0,
-             (new_capacity - set->capacity) * sizeof(EdgeBucket));
-
-      memset(&set->occupied[set->capacity], 0,
-             (new_capacity - set->capacity) * sizeof(size_t));
-
-      set->capacity = new_capacity;
-    } else {
-      logger_add(LoggerFlag_Print, 
-          "Couldn't allocate memory for new hash set, new entry insertion "
-          "aborted.\n");
+  if (set->count >= set->capacity * 3 / 4) {
+    if (!edge_hash_set_grow(set)) {
+      logger_add(LoggerFlag_Print, "Couldn't grow edge hash set.\n");
       return false;
     }
   }

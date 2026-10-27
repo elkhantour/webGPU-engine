@@ -1,4 +1,5 @@
 #include "utils.h"
+#include "backend/compute/mipmap.h"
 #include "backend/logger.h"
 #include <stdint.h>
 /**
@@ -8,9 +9,7 @@
  */
 uint16_t shader_bind_group_entries_count(const ShaderBindGroup *group) {
 
-  return group->uniforms.count + group->textures.count +
-         group->samplers.count;
-
+  return group->uniforms.count + group->textures.count + group->samplers.count;
 }
 
 /**
@@ -29,3 +28,4 @@ bool shader_validate_binding(Shader *shader) {
 
   return SHADER_BIND_VALID;
 }
+

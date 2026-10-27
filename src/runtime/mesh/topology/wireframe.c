@@ -156,6 +156,8 @@ mesh_topology_wireframe_create(MeshTopology *src_topo,
   // map wireframe index cluster based on base topology index
   mesh_topology_anchor_list_map(&hashed_anchors, src_topo, &dest_topo->anchors);
 
+  edge_hash_set_destroy(&edges);
+
   return MeshTopologyWireframeStatus_Success;
 }
 

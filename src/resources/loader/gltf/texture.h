@@ -8,4 +8,6 @@ void loader_gltf_bind_mesh_textures(LoaderGLTFContext *, Engine *, Mesh *,
 
 void loader_gltf_preload_textures(LoaderGLTFContext *, Engine *);
 
+void texture_slot_free(LoaderGLTFTexture *);
+
 #endif

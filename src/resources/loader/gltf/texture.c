@@ -36,7 +36,7 @@ static void texture_load_worker_done(void *);
 
 static DynamicListStatus texture_slot_init(LoaderGLTFTexture *, char *,
                                            const size_t);
-static void texture_slot_free(LoaderGLTFTexture *);
+
 static DynamicListStatus texture_slot_defer_mesh(LoaderGLTFTexture *,
                                                  LoaderGLTFTextureWaiter *);
 
@@ -86,7 +86,7 @@ static DynamicListStatus texture_slot_init(LoaderGLTFTexture *texture,
                      "Loader Gltf Texture Waiter");
 }
 
-static void texture_slot_free(LoaderGLTFTexture *texture) {
+void texture_slot_free(LoaderGLTFTexture *texture) {
   dyli_free((void *)&texture->waiters.entries, &texture->waiters.capacity,
             &texture->waiters.count);
   *texture = (LoaderGLTFTexture){0};
@@ -110,7 +110,8 @@ texture_slot_defer_mesh(LoaderGLTFTexture *texture,
  *               (stbi_image_free, or upload with REMWriteFlag_STBIFreeData).
  */
 
-static void bind_texture(Mesh *mesh, bind_index binding, TextureMip *texture) {
+static void bind_texture(Mesh *mesh, bind_index binding, WGPUTextureView view,
+                         WGPUTextureFormat format) {
 
   Shader *texture_shader = mesh_shader(mesh, MeshShader_Texture);
   Shader *reflection_shader = mesh_shader(mesh, MeshShader_Reflection);
@@ -118,8 +119,8 @@ static void bind_texture(Mesh *mesh, bind_index binding, TextureMip *texture) {
   // The mip is shared by every mesh using this texture, so the upload must
   // not free anything and nothing is destroyed here. The slot owns the
   // ktx/stbi data until the context is destroyed.
-  ShaderBindGroupTextureEntry *reflection_texture = shader_update_texture_mip(
-      texture_shader, SHADER_TEXTURE_BINDGROUP_TEXTURES, binding, texture,
+  ShaderBindGroupTextureEntry *reflection_texture = shader_update_texture_view(
+      texture_shader, SHADER_TEXTURE_BINDGROUP_TEXTURES, binding, view, format,
       ShaderUpdateFlag_None);
 
   // share the view with the reflection shader (see ownership note in
@@ -186,7 +187,7 @@ void loader_gltf_bind_mesh_textures(LoaderGLTFContext *ctx, Engine *engine,
       continue;
 
     if (slot->state == LoaderGLTFTextureState_Loaded) {
-      bind_texture(mesh, binding, &slot->texture);
+      bind_texture(mesh, binding, slot->view, slot->format);
     } else {
       // referenced but not loaded yet / failed
       printf("texture '%s' not ready (state %d), using fallback\n",
@@ -209,7 +210,7 @@ void loader_gltf_preload_textures(LoaderGLTFContext *ctx, Engine *engine) {
 
   cgltf_data *data = ctx->data;
   JobGroup *tex_group = calloc(1, sizeof(JobGroup));
-  static const uint8_t TEXTURES_LOAD_WORKER_CAP = 4;
+  static const uint8_t TEXTURES_LOAD_WORKER_CAP = 1;
   job_group_init(tex_group, TEXTURES_LOAD_WORKER_CAP);
 
   for (cgltf_size i = 0; i < data->textures_count; i++) {
@@ -277,10 +278,16 @@ void texture_load_worker_done(void *data) {
 
   LoaderGLTFTexture *slot = job->out_texture;
   slot->state = LoaderGLTFTextureState_Loaded;
+  slot->format = slot->texture.format;
+
+  WGPUTexture gpu_texture = texture_mip_upload(&slot->texture);
+  texture_mip_destroy(&slot->texture);
+
+  slot->view = rem_new_view(gpu_texture, NULL);
 
   for (size_t m = 0; m < slot->waiters.count; m++) {
     LoaderGLTFTextureWaiter *waiter = &slot->waiters.entries[m];
-    bind_texture(waiter->mesh, waiter->binding, &slot->texture);
+    bind_texture(waiter->mesh, waiter->binding, slot->view, slot->format);
   }
 
   if (--ctx->texture_pending == 0)
@@ -288,4 +295,5 @@ void texture_load_worker_done(void *data) {
 
   free(job);
   loader_gltf_attempt_release(ctx);
+
 }
