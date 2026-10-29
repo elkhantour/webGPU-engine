@@ -49,8 +49,7 @@ TextureCube<float4> skybox_texture;
 
 [shader("vertex")]
 PbrVertexOut vs_main(VertexIn input) {
-  return pbr_vertex(input, uMesh, uCamera, uViewport,
-                    /*tangent_in_world*/ false);
+  return pbr_vertex(input, uMesh, uCamera, uViewport);
 }
 
 [shader("fragment")]
@@ -67,15 +66,12 @@ float4 fs_main(PbrVertexOut input) : SV_Target {
 
   Material material =
       create_material(albedo, metallic, normal, occlusion, emissive, uPBR);
-  
+
   if (material.alpha < uPBR.alpha_threshold)
-      discard;
+    discard;
 
-  // TBN is actually NBT depending on the normal texture encoding:
-  //   BGRA8 -> NBT, RGBA8 -> TBN
-  float3 world_normal = normalize(tbn_transform(
-      input.vTangent, input.vBitangent, input.vNormal, material.normal));
-
+  float3 world_normal = tbn_transform(input.vTangent, input.vBitangent,
+                                      input.vNormal, material.normal);
   // direct + ambient lights
   DirectLighting direct =
       accumulate_lights(material, uLights, input.vFrag, world_normal, cam_pos);
@@ -107,9 +103,9 @@ float4 fs_main(PbrVertexOut input) : SV_Target {
 
   float4 combined =
       float4((ambient + direct.Lo * combined_shadow) + material.emissive, 1.0);
-  // return apply_fog(combined, uEnvironment.fog, length(input.vFrag -
-  // cam_pos));
-  return albedo;
 
-  // return albedo;
+  return apply_fog(combined, uEnvironment.fog, length(input.vFrag - cam_pos));
+  //   return normal;
+
+  // return float4(world_normal * 0.5 + 0.5, 1);
 }

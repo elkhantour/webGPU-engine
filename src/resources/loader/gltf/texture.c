@@ -3,6 +3,7 @@
 #include "backend/logger.h"
 #include "backend/resource_manager.h"
 #include "backend/std_texture/core.h"
+#include "cgltf/cgltf.h"
 #include "ktx.h"
 #include "resources/loader/gltf/core.h"
 #include "resources/loader/ktx_loader.h"
@@ -30,6 +31,69 @@ typedef struct {
   LoaderGLTFTexture *out_texture;
 
 } TextureLoadJob;
+
+typedef cgltf_texture_view (*texture_getter_callback)(cgltf_material material);
+
+static cgltf_texture_view material_get_albedo(cgltf_material material) {
+  return material.pbr_metallic_roughness.base_color_texture;
+}
+
+static cgltf_texture_view
+material_get_metallic_roughness(cgltf_material material) {
+  return material.pbr_metallic_roughness.metallic_roughness_texture;
+}
+
+static cgltf_texture_view material_get_normal(cgltf_material material) {
+  return material.normal_texture;
+}
+
+static cgltf_texture_view material_get_emissive(cgltf_material material) {
+  return material.emissive_texture;
+}
+
+static cgltf_texture_view material_get_occlusion(cgltf_material material) {
+  return material.occlusion_texture;
+}
+
+static const uint8_t TEXTURE_COUNT = 5;
+
+static const struct TextureRoute {
+  const char *label;
+  texture_getter_callback texture_callback;
+  const TextureViewType fallback_texture;
+  const WGPUTextureFormat format;
+} TEXTURE_ROUTE[] = {
+    {
+        "Base",
+        material_get_albedo,
+        TextureViewType_Float,
+        WGPUTextureFormat_RGBA8UnormSrgb,
+    },
+    {
+        "Metallic Roughness",
+        material_get_metallic_roughness,
+        TextureViewType_Float,
+        WGPUTextureFormat_RGBA8Unorm,
+    },
+    {
+        "Normal",
+        material_get_normal,
+        TextureViewType_FloatNormal,
+        WGPUTextureFormat_RGBA8Unorm,
+    },
+    {
+        "Emissive",
+        material_get_emissive,
+        TextureViewType_Float,
+        WGPUTextureFormat_RGBA8UnormSrgb,
+    },
+    {
+        "Occlusion",
+        material_get_occlusion,
+        TextureViewType_Float,
+        WGPUTextureFormat_RGBA8Unorm,
+    },
+};
 
 static void texture_load_worker_start(void *);
 static void texture_load_worker_done(void *);
@@ -79,6 +143,10 @@ static LoaderGLTFStatus load_from_buffer_view(cgltf_image *image, int max_size,
                                           });
 
   return LoaderGLTFStatus_Success;
+}
+
+static char *texture_slot_name(cgltf_texture *texture) {
+  return texture->image->uri;
 }
 
 static DynamicListStatus texture_slot_init(LoaderGLTFTexture *texture,
@@ -141,50 +209,17 @@ static void bind_texture(Mesh *mesh, bind_index binding, WGPUTextureView view,
 void loader_gltf_bind_mesh_textures(LoaderGLTFContext *ctx, Engine *engine,
                                     Mesh *mesh, cgltf_material *material) {
 
-  static const uint8_t TEXTURE_COUNT = 5;
+  for (uint8_t texture = 0; texture < TEXTURE_COUNT; texture++) {
 
-  const struct {
-    const char *label;
-    cgltf_texture_view *gltf_texture;
-    const WGPUTextureView fallback_texture;
-  } texture_view_list[] = {
-      {
-          "Base",
-          &material->pbr_metallic_roughness.base_color_texture,
-          std_texture_view(TextureViewType_Float),
-      },
-      {
-          "Metallic Roughness",
-          &material->pbr_metallic_roughness.metallic_roughness_texture,
-          std_texture_view(TextureViewType_Float),
-      },
-      {
-          "Normal",
-          &material->normal_texture,
-          std_texture_view(TextureViewType_FloatNormal),
-      },
-      {
-          "Emissive",
-          &material->emissive_texture,
-          std_texture_view(TextureViewType_Float),
-      },
-      {
-          "Occlusion",
-          &material->occlusion_texture,
-          std_texture_view(TextureViewType_Float),
-      },
-  };
-
-  for (uint8_t binding = 0; binding < TEXTURE_COUNT; binding++) {
-
-    cgltf_texture_view *view = texture_view_list[binding].gltf_texture;
+    cgltf_texture_view view =
+        TEXTURE_ROUTE[texture].texture_callback(*material);
     const WGPUTextureView fallback =
-        texture_view_list[binding].fallback_texture;
+        std_texture_view(TEXTURE_ROUTE[texture].fallback_texture);
 
     // look up the preloaded slot by cgltf texture index (no string compare)
     LoaderGLTFTexture *slot = NULL;
-    if (view->texture != NULL) {
-      cgltf_size idx = cgltf_texture_index(ctx->data, view->texture);
+    if (view.texture != NULL) {
+      cgltf_size idx = cgltf_texture_index(ctx->data, view.texture);
       if (idx < ctx->textures.count)
         slot = &ctx->textures.entries[idx];
     }
@@ -193,16 +228,16 @@ void loader_gltf_bind_mesh_textures(LoaderGLTFContext *ctx, Engine *engine,
       continue;
 
     if (slot->state == LoaderGLTFTextureState_Loaded) {
-      bind_texture(mesh, binding, slot->view, slot->format);
+      bind_texture(mesh, texture, slot->view, slot->format);
     } else {
       // referenced but not loaded yet / failed
       printf("texture '%s' not ready (state %d), using fallback\n",
-             texture_view_list[binding].label, slot->state);
+             TEXTURE_ROUTE[texture].label, slot->state);
 
       // add to the slot queue for later when texture is loaded
       texture_slot_defer_mesh(slot, &(LoaderGLTFTextureWaiter){
                                         .mesh = mesh,
-                                        .binding = binding,
+                                        .binding = texture,
                                     });
 
       // DELETEME reflection_texture = shader_update_texture_view(
@@ -210,6 +245,34 @@ void loader_gltf_bind_mesh_textures(LoaderGLTFContext *ctx, Engine *engine,
       //      fallback, TEXTURE_FORMAT_OFFSCREEN, ShaderUpdateFlag_None);
     }
   }
+}
+
+/**
+   clgtf_texture doesn't allow to retrieve the format. So we need to traverse
+   the materials to see the usage of the texture.
+ */
+static WGPUTextureFormat get_format(cgltf_data *data, const char *name) {
+
+  for (uint8_t t = 0; t < TEXTURE_COUNT; t++) {
+
+    const struct TextureRoute *route = &TEXTURE_ROUTE[t];
+
+    for (cgltf_size m = 0; m < data->materials_count; ++m) {
+      cgltf_texture_view view =
+          TEXTURE_ROUTE[t].texture_callback(data->materials[m]);
+
+      if (view.texture && texture_slot_name(view.texture) == name) {
+
+        // DEBUG
+        printf("[mat] %s | %s | %d\n", view.texture->image->uri, route->label,
+               route->format);
+
+        return route->format;
+      }
+    }
+  }
+
+  return WGPUTextureFormat_RGBA8UnormSrgb;
 }
 
 void loader_gltf_preload_textures(LoaderGLTFContext *ctx, Engine *engine) {
@@ -223,7 +286,8 @@ void loader_gltf_preload_textures(LoaderGLTFContext *ctx, Engine *engine) {
     cgltf_texture *tex = &data->textures[i];
     LoaderGLTFTexture *slot = &ctx->textures.entries[i];
     static uint8_t TEXTURE_SLOT_WAITER_CAPACITY = 8;
-    texture_slot_init(slot, tex->image->uri, TEXTURE_SLOT_WAITER_CAPACITY);
+    texture_slot_init(slot, texture_slot_name(tex),
+                      TEXTURE_SLOT_WAITER_CAPACITY);
 
     TextureLoadJob *job = calloc(1, sizeof(TextureLoadJob));
     job->group = tex_group;
@@ -284,8 +348,22 @@ void texture_load_worker_done(void *data) {
 
   LoaderGLTFTexture *slot = job->out_texture;
   slot->state = LoaderGLTFTextureState_Loaded;
-  slot->format = slot->texture.format;
+  slot->format = get_format(ctx->data, slot->name);
+  slot->texture.format = slot->format;
 
+  {
+    // DEBUG
+    printf("Textures --------------- \n");
+    for (size_t i = 0; i < ctx->textures.count; i++) {
+      printf("[%lu] %s | %d (RGBA: %d, UNORM: %d)\n", i,
+             ctx->textures.entries[i].name, ctx->textures.entries[i].format,
+             WGPUTextureFormat_RGBA8UnormSrgb, WGPUTextureFormat_RGBA8Unorm);
+    }
+    printf("----------------------- \n");
+  }
+
+  // DEBUG
+  printf("Uploading with: %d\n", slot->texture.format);
   WGPUTexture gpu_texture = texture_mip_upload(&slot->texture);
   texture_mip_destroy(&slot->texture);
 

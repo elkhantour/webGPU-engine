@@ -25,8 +25,8 @@
 
 /** Single-mip view over a stbi-allocated RGBA8 buffer. */
 static void texture_set_single_mip(TextureMip *out, unsigned char *data, int w,
-                                   int h) {
-  out->format = WGPUTextureFormat_RGBA8Unorm;
+                                   int h, const WGPUTextureFormat format) {
+  out->format = format;
   out->width = (uint32_t)w;
   out->height = (uint32_t)h;
   out->mip_count = 1;
@@ -36,7 +36,8 @@ static void texture_set_single_mip(TextureMip *out, unsigned char *data, int w,
 
 /** stbi path: from file (path) or memory (mem), resized to fit max_size. */
 static TextureStatus load_stbi(const char *path, const unsigned char *mem,
-                               size_t mem_size, int max_size, bool flip,
+                               size_t mem_size, int max_size,
+                               const WGPUTextureFormat format, bool flip,
                                TextureMip *out_mip) {
   int w = 0, h = 0, channels = 0;
   unsigned char *data = NULL;
@@ -64,7 +65,7 @@ static TextureStatus load_stbi(const char *path, const unsigned char *mem,
   if (max_size > TextureResolution_Undefined)
     texture_downscale(&tex, max_size, max_size);
 
-  texture_set_single_mip(out_mip, tex.data, tex.width, tex.height);
+  texture_set_single_mip(out_mip, tex.data, tex.width, tex.height, format);
   return TextureStatus_Success;
 }
 
@@ -168,7 +169,8 @@ texture_mip_create_from_memory(TextureMip *texture,
   if (is_ktx2_memory(desc->data, desc->size))
     return load_ktx(NULL, desc->data, desc->size, max_size, texture);
 #endif
-  return load_stbi(NULL, desc->data, desc->size, max_size, desc->flip, texture);
+  return load_stbi(NULL, desc->data, desc->size, max_size, desc->format,
+                   desc->flip, texture);
 }
 
 /**

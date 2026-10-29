@@ -59,14 +59,14 @@ typedef struct {
 
 typedef struct {
   mat4 model;
+  mat4 model_inv_transpose;
   vec4 position;
   uint32_t probe_reflection_plane_count;
   uint32_t probe_reflection_probe_count;
-  uint32_t _pad[42];
+  uint32_t _pad[26];
 } __attribute__((aligned(16))) MeshUniform;
 
 typedef void (*mesh_get_transform_attribute)(Mesh *, vec3);
-
 
 typedef enum {
   MeshShader_Texture,
@@ -103,7 +103,6 @@ struct Mesh {
     MeshTopology override;
   } topology;
 
-    
   Shader *shader[MeshShader_COUNT];
 
   // hierarchy

@@ -20,8 +20,7 @@
 #include "runtime/shader/core.h"
 #include "runtime/texture/core.h"
 #include "utils/defines.h"
-#include "utils/frli.h"
-#include "utils/hsht.h"
+#include "utils/pool.h"
 #include "webgpu/webgpu.h"
 #include <stddef.h>
 
@@ -35,28 +34,31 @@ typedef enum {
   REMStatus_UndefError,
 } REMStatus;
 
-// WGPU
-
 // clang-format off
 
+// WGPU objects are opaque pointers: they are NOT pooled and NOT wrapped. They
+// only get a live counter (leak checking). The capacity column is unused.
+//
 //      Type         |             Registry type           |         Label          |        Pool Capacity
 #define REM_WGPU_LIST(_)                                                                                                                                  \
     _(WGPUTexture,             RegEntryType_WGPUObject,             texture,                     128        ) \
     _(WGPUTextureView,         RegEntryType_WGPUObject,             view,                        624        ) \
     _(WGPUBuffer,              RegEntryType_WGPUObject,             buffer,                      624        ) \
     _(WGPUShaderModule,        RegEntryType_WGPUObject,             shader_module,               128        ) \
-    _(WGPUSampler,             RegEntryType_WGPUObject,             sampler,                     128        )                        
+    _(WGPUSampler,             RegEntryType_WGPUObject,             sampler,                     128        )
 
 #define REM_WGPU_ITEM_COUNT 5
 
+// Engine objects: one chunked Pool each. The capacity column is the INITIAL
+// capacity (preallocated at init); pools keep growing past it if needed.
 #define REM_ENGINE_LIST(_)                                                                                                                                \
     _(Mesh,                   RegEntryType_Mesh,                    mesh,                       1024        ) \
-    _(Scene,                  RegEntryType_Scene,                   scene,                         2        ) \
+    _(Scene,                  RegEntryType_Scene,                   scene,                         1        ) \
     _(RenderPipeline,         RegEntryType_RenderPipeline,          render_pipeline,              64        ) \
     _(ComputePipeline,        RegEntryType_ComputePipeline,         compute_pipeline,            128        ) \
     _(Shader,                 RegEntryType_Shader,                  shader,                     1024        ) \
     _(Camera,                 RegEntryType_Camera,                  camera,                       32        ) \
-    _(Renderer,               RegEntryType_Renderer,                renderer,                      2        ) \
+    _(Renderer,               RegEntryType_Renderer,                renderer,                      1        ) \
     _(Gui,                    RegEntryType_Gui,                     gui,                           2        ) \
     _(UBOManager,             RegEntryType_Ubo,                     ubo,                           1        ) \
     _(PointLight,             RegEntryType_PointLight,              point_light,                   6        ) \
@@ -66,81 +68,36 @@ typedef enum {
     _(ProbeReflectionPlane,   RegEntryType_ProbeReflectionPlane,    plane_reflection,             16        ) \
     _(ProbeReflection,        RegEntryType_ProbeReflection,         probe_reflection,             16        ) \
     _(ProbeReflectionGrid,    RegEntryType_ProbeReflectionGrid,     probe_reflection_grid,        16        ) \
-    _(JobSystem,              RegEntryType_JobSystem,               job_system,                    2        )
+    _(JobSystem,              RegEntryType_JobSystem,               job_system,                    1        )
 
 // clang-format on
 
-#define REM_TYPE_COUNT 22
-#define REM_HASH_CAPACITY 2048
+// Upper bound on slots per chunk. Pools with a smaller initial capacity use a
+// chunk sized to that capacity, so singletons don't allocate 256 slots.
+#define REM_MAX_CHUNK_SLOTS 256
 
 // === Generates Type Enums ===
 #define _(Type, RegistryType, Label, PoolCapacity) REMType_##Type,
-typedef enum { REM_WGPU_LIST(_) REM_ENGINE_LIST(_) } REMType;
+typedef enum { REM_WGPU_LIST(_) REM_ENGINE_LIST(_) REMType_Count } REMType;
 #undef _
 
-// === Generate Structs ===
+#define REM_TYPE_COUNT REMType_Count
 
-typedef struct {
-  reg_id_t owner;
-  uint32_t key;
-  REMType type;
-  HashTableBucketState state;
-  size_t pool_id;
-  void *handle;
-} REMBucket;
+// WGPU types come first in the enum, engine types follow.
+_Static_assert(REMType_Mesh == REM_WGPU_ITEM_COUNT,
+               "REM_WGPU_ITEM_COUNT doesn't match REM_WGPU_LIST");
 
-// === Generate Pools for Engine Objects ===
-// We use a pointer-based hashing, so we first need to generate our items in
-// respective pools. The we will link each pool pointer to the Resource Bucket
-// handle. Note that since WGPU entities are already opaque pointers, we don't
-// need to alocate pools for them. Pools a just a way to more easily control
-// each resource allocation and a way uniformize the hash system by only using
-// pointers as hashing keys.
-#define _(Type, RegistryType, Label, PoolCapacity)                             \
-  typedef struct {                                                             \
-    size_t capacity;                                                           \
-    size_t count;                                                              \
-    Type *entries;                                                             \
-  } REMPool##Type;
-
-REM_ENGINE_LIST(_);
-#undef _
-
-/* TODO:
-Add the following entities ?
- - sem lists
- - sem
-
- make sure the remove their respective item->id = ....
- */
 typedef struct ResourceManager {
 
-  FREE_LIST(void *) pools[REM_TYPE_COUNT];
-  HashTable hash_table;
+  // Indexed by REMType. Only engine types (>= REM_WGPU_ITEM_COUNT) are used.
+  Pool pools[REM_TYPE_COUNT];
+
+  // Live counters for raw WGPU objects, indexed by REMType.
+  uint32_t wgpu_live[REM_WGPU_ITEM_COUNT];
 
 } ResourceManager;
 
 extern ResourceManager g_rem;
-
-/*
-  Hash utils callback
-
-  In order to improve access to our resources O(1), we use a hash system.
-  However we use two kinds of hash methods depending on the resource type:
-  1. WGPU related resources used Opaque Pointers, as a result we use this
-  pointer to generate the hash.
-  2. Engine related resources (Mesh, Scene...) have an ID generated by the
-  register. As a result we use this ID  to generate the hash.
-
-  In the same way that both WGPU and Engine resources use their respective
-  constructor (wgpuDeviceCreate.... vs item_create()) and destructor
-  (wgpuResourceRelease() vs item_destroy())
- */
-uint32_t rem_generate_hash(const void *);
-void rem_bucket_set_bucket_state(const void *, const HashTableBucketState);
-HashTableBucketState rem_bucket_get_bucket_state(const void *);
-bool rem_bucket_compare(const void *, const void *);
-void *rem_bucket_get_key(const void *);
 
 // === Define Config ===
 static const struct {
@@ -168,6 +125,14 @@ EXTERN_C_BEGIN
 
 REMStatus resource_manager_init();
 
+// Destroys every engine object still alive (reverse type order), frees all
+// pools and reports leaked WGPU objects.
+void resource_manager_shutdown(void);
+
+// Number of live objects of a given type (engine or WGPU).
+uint32_t rem_live_count(const REMType);
+
+// === WGPU (raw opaque pointers, not pooled) ===
 WGPUTexture rem_new_texture(const WGPUTextureDescriptor *);
 
 WGPUTextureView rem_new_view(const WGPUTexture,
@@ -186,18 +151,22 @@ REMStatus rem_write_texture(WGPUTexture, void *, const size_t,
                             const TextureChannel, const uint16_t, const uint8_t,
                             const REMWriteFlag);
 
+// Release the object and set *handle to NULL.
 REMStatus rem_destroy_texture(WGPUTexture *);
 REMStatus rem_destroy_sampler(WGPUSampler *);
 REMStatus rem_destroy_view(WGPUTextureView *);
 REMStatus rem_destroy_buffer(WGPUBuffer *);
 REMStatus rem_destroy_shader_module(WGPUShaderModule *);
 
-// === Generate Engine creator / destructor functions
+// === Engine objects (pooled, pointer-stable) ===
+// rem_new_<label>() returns a zeroed object, or NULL on out-of-memory.
+// rem_destroy_<label>() calls <label>_destroy() (contents only), then
+// returns the slot to the pool. The pointer is invalid afterwards.
 #define _(Type, RegistryType, Label, PoolCapacity)                             \
   Type *rem_new_##Label();                                                     \
   REMStatus rem_destroy_##Label(Type *);
 
-REM_ENGINE_LIST(_);
+REM_ENGINE_LIST(_)
 #undef _
 
 EXTERN_C_END

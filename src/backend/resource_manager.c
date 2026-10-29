@@ -12,33 +12,36 @@
 #include "runtime/probe/reflection/plane.h"
 #include "runtime/shader/core.h"
 #include "stb/stb_image.h"
-#include "utils/dyli.h"
-#include "utils/frli.h"
-#include "utils/hsht.h"
 #include "utils/stli.h"
 #include "webgpu/webgpu.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 ResourceManager g_rem = {0};
 
-static inline const size_t rem_type_size(const REMType type) {
-  return rem_config[type].type_size;
-}
+static inline Pool *rem_pool(const REMType type) { return &g_rem.pools[type]; }
 
-static inline const char *rem_type_label(const REMType type) {
-  return rem_config[type].label;
-}
+/*
+   Engine destroy thunks: one per engine type, so shutdown can destroy
+   leftover objects through a table indexed by REMType without casting
+   function pointers.
+ */
+#define _(Type, RegistryType, Label, Capacity)                                 \
+  static void rem_destroy_thunk_##Label(void *item) {                          \
+    Label##_destroy((Type *)item);                                             \
+  }
+REM_ENGINE_LIST(_)
+#undef _
 
-static inline const size_t rem_type_init_capacity(const REMType type) {
-  return rem_config[type].capacity;
-}
-
-static inline const size_t rem_type_count(const REMType type) {
-  return g_rem.pools[type].count;
-}
+static void (*const rem_destroy_thunks[REMType_Count])(void *) = {
+#define _(Type, RegistryType, Label, Capacity)                                 \
+  [REMType_##Type] = rem_destroy_thunk_##Label,
+    REM_ENGINE_LIST(_)
+#undef _
+};
 
 REMStatus resource_manager_init() {
 
@@ -47,122 +50,160 @@ REMStatus resource_manager_init() {
   REMStatus status = REMStatus_Success;
   size_t total_bytes = 0;
 
-  // === init global hash table ===
-  hsht_create(&g_rem.hash_table,
-              &(HashTableDescriptor){
-                  .bucket_size = sizeof(REMBucket),
-                  .label = "Resource Manager Hash Table",
-                  .capacity = REM_HASH_CAPACITY,
-                  .generator_callback = rem_generate_hash,
-                  .comparator_callback = rem_bucket_compare,
-                  .get_bucket_state_callback = rem_bucket_get_bucket_state,
-                  .set_bucket_state_callback = rem_bucket_set_bucket_state,
-                  .get_key_callback = rem_bucket_get_key,
-              });
+  memset(&g_rem, 0, sizeof g_rem);
 
   // === init per engine type pools ===
-  for (REMType i = 0; i < REM_TYPE_COUNT; i++) {
+  for (REMType i = REM_WGPU_ITEM_COUNT; i < REMType_Count; i++) {
 
-    g_rem.pools[i].type_size = rem_type_size(i);
-    g_rem.pools[i].label = rem_type_label(i);
+    const size_t capacity = rem_config[i].capacity;
+    const size_t type_size = rem_config[i].type_size;
 
-    const size_t capacity = rem_type_init_capacity(i);
+    // chunk sized to the initial capacity, capped, so singletons stay small
+    const uint32_t chunk_slots =
+        capacity < REM_MAX_CHUNK_SLOTS ? (uint32_t)capacity
+                                       : REM_MAX_CHUNK_SLOTS;
 
-    if (frli_create((void **)&g_rem.pools[i].entries, &g_rem.pools[i].used,
-                    &g_rem.pools[i].capacity, &g_rem.pools[i].count,
-                    g_rem.pools[i].type_size, capacity,
-                    g_rem.pools[i].label) == FreeListStatus_Success) {
+    Pool *pool = rem_pool(i);
+    pool_init(pool, (uint32_t)type_size, chunk_slots);
 
-      total_bytes += rem_config[i].type_size * rem_config[i].capacity;
+    // Preallocate the initial capacity. Remove this call to make pools fully
+    // lazy (they will then allocate a chunk on first use).
+    if (pool_reserve(pool, (uint32_t)capacity)) {
 
-      logger_add(
-          LoggerFlag_Print, "- %s: %lu bytes (type size: %lu, capacity: %lu)",
-          rem_config[i].label, rem_config[i].type_size * rem_config[i].capacity,
-          rem_config[i].type_size, rem_config[i].capacity);
+      total_bytes += pool_reserved_bytes(pool);
+
+      logger_add(LoggerFlag_Print,
+                 "- %s: %lu bytes (type size: %lu, initial capacity: %lu, "
+                 "chunk: %u slots)",
+                 rem_config[i].label,
+                 (unsigned long)pool_reserved_bytes(pool),
+                 (unsigned long)type_size, (unsigned long)capacity,
+                 pool->chunk_size);
     } else {
       logger_add(LoggerFlag_Error,
-                 "- %s: Couldn't allocate memory with a "
-                 "capacity of %lu (%lu bytes).",
-                 rem_config[i].label, rem_config[i].capacity,
-                 rem_config[i].type_size * rem_config[i].capacity);
+                 "- %s: Couldn't allocate memory with an initial capacity "
+                 "of %lu (%lu bytes).",
+                 rem_config[i].label, (unsigned long)capacity,
+                 (unsigned long)(type_size * capacity));
       status = REMStatus_AllocFail;
     }
   }
 
-  // log result
-  logger_add(LoggerFlag_Print, "Total allocation size: %lu bytes", total_bytes);
+  logger_add(LoggerFlag_Print, "Total allocation size: %lu bytes",
+             (unsigned long)total_bytes);
   return status;
 }
 
+void resource_manager_shutdown(void) {
+
+  // reverse order: objects created last usually depend on earlier ones
+  for (int t = REMType_Count - 1; t >= REM_WGPU_ITEM_COUNT; t--) {
+
+    Pool *pool = rem_pool((REMType)t);
+    const uint32_t live = pool_live_count(pool);
+
+    if (live > 0) {
+      logger_add(LoggerFlag_Print,
+                 "- %s: destroying %u object(s) still alive at shutdown",
+                 rem_config[t].label, live);
+    }
+
+    uint32_t gen;
+    POOL_FOREACH_ALIVE(pool, i, gen) {
+      rem_destroy_thunks[t](pool_slot_ptr(pool, i));
+      pool_free(pool, i, gen);
+    }
+
+    pool_shutdown(pool);
+  }
+
+  for (int t = 0; t < REM_WGPU_ITEM_COUNT; t++) {
+    if (g_rem.wgpu_live[t] > 0) {
+      logger_add(LoggerFlag_Error, "- %s: %u object(s) leaked at shutdown",
+                 rem_config[t].label, g_rem.wgpu_live[t]);
+    }
+  }
+}
+
+uint32_t rem_live_count(const REMType type) {
+  if (type < REM_WGPU_ITEM_COUNT)
+    return g_rem.wgpu_live[type];
+  if (type >= REMType_Count)
+    return 0;
+  return pool_live_count(rem_pool(type));
+}
+
 /*
-
-   ▗▖ ▗▖ ▗▄▖  ▗▄▄▖▗▖ ▗▖
-   ▐▌ ▐▌▐▌ ▐▌▐▌   ▐▌ ▐▌
-   ▐▛▀▜▌▐▛▀▜▌ ▝▀▚▖▐▛▀▜▌
-   ▐▌ ▐▌▐▌ ▐▌▗▄▄▞▘▐▌ ▐▌
-
-   ▗▖ ▗▖▗▄▄▄▖▗▄▄▄▖▗▖    ▗▄▄▖
-   ▐▌ ▐▌  █    █  ▐▌   ▐▌
-   ▐▌ ▐▌  █    █  ▐▌    ▝▀▚▖
-   ▝▚▄▞▘  █  ▗▄█▄▖▐▙▄▄▖▗▄▄▞▘
-
-
- */
-
-uint32_t rem_generate_hash(const void *ptr) { return hsht_hash_ptr(ptr); }
-
-HashTableBucketState rem_bucket_get_bucket_state(const void *obj) {
-  return (bool)(((REMBucket *)obj)->state);
-}
-
-void rem_bucket_set_bucket_state(const void *bucket,
-                                 const HashTableBucketState state) {
-  ((REMBucket *)bucket)->state = state;
-}
-
-bool rem_bucket_compare(const void *key, const void *bucket) {
-  return key == ((REMBucket *)bucket)->handle;
-}
-
-void *rem_bucket_get_key(const void *bucket) {
-  return ((REMBucket *)bucket)->handle;
-}
-
-/*
-
-
 
    ▗▖ ▗▖ ▗▄▄▖▗▄▄▖ ▗▖ ▗▖
    ▐▌ ▐▌▐▌   ▐▌ ▐▌▐▌ ▐▌
    ▐▌ ▐▌▐▌▝▜▌▐▛▀▘ ▐▌ ▐▌
    ▐▙█▟▌▝▚▄▞▘▐▌   ▝▚▄▞▘
 
-
-
+   Raw opaque pointers: created by wgpu, returned as-is, only counted.
  */
 
-WGPUTexture rem_new_texture(const WGPUTextureDescriptor *desc) {
-
-  const REMType type = REMType_WGPUTexture;
-
-  // first generate hash source
-  WGPUTexture texture = wgpuDeviceCreateTexture(context_device(), desc);
-
-  REMBucket *entry =
-      hsht_new_entry(&g_rem.hash_table, texture, HashTableNewFlag_None);
-
-  if (entry == NULL) {
-    rem_destroy_texture(&texture);
-    return NULL;
+#define REM_NEW_WGPU_ITEM(Name, FuncName, TypeEnum, DescType, Creator)         \
+  Name rem_new_##FuncName(const DescType *desc) {                              \
+    Name item = Creator(context_device(), desc);                               \
+    if (item != NULL)                                                          \
+      g_rem.wgpu_live[TypeEnum]++;                                             \
+    return item;                                                               \
   }
 
-  entry->owner = 0;
-  entry->key = 0;
-  entry->pool_id = DYLI_INVALID_INDEX;
-  entry->type = type;
-  entry->handle = texture;
+REM_NEW_WGPU_ITEM(WGPUTexture, texture, REMType_WGPUTexture,
+                  WGPUTextureDescriptor, wgpuDeviceCreateTexture);
 
-  return texture;
+REM_NEW_WGPU_ITEM(WGPUSampler, sampler, REMType_WGPUSampler,
+                  WGPUSamplerDescriptor, wgpuDeviceCreateSampler);
+
+REM_NEW_WGPU_ITEM(WGPUBuffer, buffer, REMType_WGPUBuffer, WGPUBufferDescriptor,
+                  wgpuDeviceCreateBuffer);
+
+WGPUTextureView rem_new_view(const WGPUTexture texture,
+                             const WGPUTextureViewDescriptor *desc) {
+
+  WGPUTextureView view = wgpuTextureCreateView(texture, desc);
+
+  if (view != NULL)
+    g_rem.wgpu_live[REMType_WGPUTextureView]++;
+
+  return view;
+}
+
+WGPUShaderModule rem_new_shader_module(char *code, const char *label,
+                                       const REMWriteFlag flag) {
+
+  WGPUShaderModuleWGSLDescriptor wgsl = {
+      .chain.sType = WGPUSType_ShaderModuleWGSLDescriptor,
+      .code = code,
+  };
+
+  wgpuDevicePushErrorScope(context_device(), WGPUErrorFilter_Validation);
+
+  WGPUShaderModule shader = wgpuDeviceCreateShaderModule(
+      context_device(), &(WGPUShaderModuleDescriptor){
+                            .nextInChain = (WGPUChainedStruct *)(&wgsl),
+                            .label = label,
+                        });
+
+  wgpuShaderModuleGetCompilationInfo(
+      shader, compute_pipeline_compilation_info_callback, shader);
+
+  wgpuDevicePopErrorScope(context_device(),
+                          compute_pipeline_handle_validation_error,
+                          (void *)shader);
+
+  // the code string is consumed either way, free it if asked to
+  if ((flag & REMWriteFlag_FreeData) && code) {
+    free(code);
+    code = NULL;
+  }
+
+  if (shader != NULL)
+    g_rem.wgpu_live[REMType_WGPUShaderModule]++;
+
+  return shader;
 }
 
 REMStatus rem_write_texture(WGPUTexture texture, void *data, const size_t size,
@@ -184,7 +225,6 @@ REMStatus rem_write_texture(WGPUTexture texture, void *data, const size_t size,
       glm_max(1, (int)(wgpuTextureGetWidth(texture) >> mip_level));
   const uint32_t h =
       glm_max(1, (int)(wgpuTextureGetHeight(texture) >> mip_level));
-
 
   wgpuQueueWriteTexture(context_queue(),
                         &(WGPUImageCopyTexture){
@@ -212,60 +252,6 @@ REMStatus rem_write_texture(WGPUTexture texture, void *data, const size_t size,
   return REMStatus_Success;
 }
 
-#define REM_NEW_WGPU_ITEM(Name, FuncName, Type, REMName, DescType, Creator)    \
-  Name rem_new_##FuncName(const DescType *desc) {                              \
-                                                                               \
-    const REMType type = Type;                                                 \
-                                                                               \
-    Name item = Creator(context_device(), desc);                               \
-                                                                               \
-    REMBucket *entry =                                                         \
-        hsht_new_entry(&g_rem.hash_table, item, HashTableNewFlag_None);        \
-                                                                               \
-    if (entry == NULL) {                                                       \
-      rem_destroy_##FuncName(&item);                                           \
-      return NULL;                                                             \
-    }                                                                          \
-                                                                               \
-    entry->owner = 0;                                                          \
-    entry->key = 0;                                                            \
-    entry->pool_id = DYLI_INVALID_INDEX;                                       \
-    entry->type = type;                                                        \
-    entry->handle = item;                                                      \
-                                                                               \
-    return item;                                                               \
-  }
-
-WGPUTextureView rem_new_view(const WGPUTexture texture,
-                             const WGPUTextureViewDescriptor *desc) {
-
-  const REMType type = REMType_WGPUTextureView;
-
-  WGPUTextureView view = wgpuTextureCreateView(texture, desc);
-
-  REMBucket *entry =
-      hsht_new_entry(&g_rem.hash_table, view, HashTableNewFlag_None);
-
-  if (entry == NULL) {
-    rem_destroy_view(&view);
-    return NULL;
-  }
-
-  entry->pool_id = DYLI_INVALID_INDEX;
-  entry->owner = 0;
-  entry->key = 0;
-  entry->type = type;
-  entry->handle = view;
-
-  return view;
-}
-
-REM_NEW_WGPU_ITEM(WGPUSampler, sampler, REMType_WGPUSampler, REMWGPUSampler,
-                  WGPUSamplerDescriptor, wgpuDeviceCreateSampler);
-
-REM_NEW_WGPU_ITEM(WGPUBuffer, buffer, REMType_WGPUBuffer, REMWGPUBuffer,
-                  WGPUBufferDescriptor, wgpuDeviceCreateBuffer);
-
 REMStatus rem_write_buffer(WGPUBuffer buffer, const size_t offset, void *data,
                            const size_t size, const REMWriteFlag flag) {
 
@@ -273,11 +259,6 @@ REMStatus rem_write_buffer(WGPUBuffer buffer, const size_t offset, void *data,
     logger_add(LoggerFlag_Error, "Attempting to write in undefined buffer.");
     return REMStatus_NullResource;
   }
-
-  // if (data == NULL) {
-  //   logger_add(LoggerFlag_Error, "Attempting to write in NULL data in
-  //   buffer."); return REMStatus_NullResource;
-  // }
 
   wgpuQueueWriteBuffer(context_queue(), buffer, offset, data, size);
 
@@ -289,166 +270,103 @@ REMStatus rem_write_buffer(WGPUBuffer buffer, const size_t offset, void *data,
   return REMStatus_Success;
 }
 
-WGPUShaderModule rem_new_shader_module(char *code, const char *label,
-                                       const REMWriteFlag flag) {
-
-  const REMType type = REMType_WGPUShaderModule;
-
-  WGPUShaderModuleWGSLDescriptor wgsl = {
-      .chain.sType = WGPUSType_ShaderModuleWGSLDescriptor,
-      .code = code,
-  };
-
-  wgpuDevicePushErrorScope(context_device(), WGPUErrorFilter_Validation);
-
-  WGPUShaderModule shader = wgpuDeviceCreateShaderModule(
-      context_device(), &(WGPUShaderModuleDescriptor){
-                            .nextInChain = (WGPUChainedStruct *)(&wgsl),
-                            .label = label,
-                        });
-
-  wgpuShaderModuleGetCompilationInfo(
-      shader, compute_pipeline_compilation_info_callback, shader);
-
-  wgpuDevicePopErrorScope(context_device(),
-                          compute_pipeline_handle_validation_error,
-                          (void *)shader);
-
-  REMBucket *entry =
-      hsht_new_entry(&g_rem.hash_table, shader, HashTableNewFlag_None);
-
-  if (entry == NULL) {
-    rem_destroy_shader_module(&shader);
-    return NULL;
-  }
-
-  if ((flag & REMWriteFlag_FreeData) && code) {
-    free(code);
-    code = NULL;
-  }
-
-  entry->pool_id = DYLI_INVALID_INDEX;
-  entry->owner = 0;
-  entry->key = 0;
-  entry->type = REMType_Shader;
-  entry->handle = shader;
-
-  return shader;
-}
-
-// Destroy item based on its handle pointer (wgpu Opaque Pointer objects)
-#define REM_DESTROY_WGPU_ITEM(FuncName, HandleType, REMType, REMItem,          \
-                              Destructor)                                      \
+// Release a raw WGPU object, decrement its counter, NULL the caller's handle.
+#define REM_DESTROY_WGPU_ITEM(FuncName, HandleType, TypeEnum, Releaser)        \
   REMStatus rem_destroy_##FuncName(HandleType *handle) {                       \
                                                                                \
-    if (*handle == NULL)                                                       \
+    if (handle == NULL || *handle == NULL)                                     \
       return REMStatus_NullResource;                                           \
                                                                                \
-    Destructor;                                                                \
+    Releaser(*handle);                                                         \
                                                                                \
-    HashTableStatus remove =                                                   \
-        hsht_remove_entry(&g_rem.hash_table, (void *)*handle);                 \
+    if (g_rem.wgpu_live[TypeEnum] > 0)                                         \
+      g_rem.wgpu_live[TypeEnum]--;                                             \
                                                                                \
     *handle = NULL;                                                            \
-                                                                               \
-    return REMStatus_UnfoundResource;                                          \
+    return REMStatus_Success;                                                  \
   }
 
-REM_DESTROY_WGPU_ITEM(texture, WGPUTexture, REMType_WGPUTexture, REMTexture,
-                      wgpuTextureRelease(*handle));
+REM_DESTROY_WGPU_ITEM(texture, WGPUTexture, REMType_WGPUTexture,
+                      wgpuTextureRelease);
 
-REM_DESTROY_WGPU_ITEM(view, WGPUTextureView, REMType_WGPUTextureView, REMView, {
+REM_DESTROY_WGPU_ITEM(buffer, WGPUBuffer, REMType_WGPUBuffer,
+                      wgpuBufferRelease);
+
+REM_DESTROY_WGPU_ITEM(sampler, WGPUSampler, REMType_WGPUSampler,
+                      wgpuSamplerRelease);
+
+REM_DESTROY_WGPU_ITEM(shader_module, WGPUShaderModule,
+                      REMType_WGPUShaderModule, wgpuShaderModuleRelease);
+
+// Views need the std-texture protection check first.
+REMStatus rem_destroy_view(WGPUTextureView *handle) {
+
+  if (handle == NULL || *handle == NULL)
+    return REMStatus_NullResource;
+
   if (is_std_texture_view(*handle))
     return REMStatus_ProtectedResource;
 
   wgpuTextureViewRelease(*handle);
-});
 
-REM_DESTROY_WGPU_ITEM(buffer, WGPUBuffer, REMType_WGPUBuffer, REMBuffer,
-                      wgpuBufferRelease(*handle));
+  if (g_rem.wgpu_live[REMType_WGPUTextureView] > 0)
+    g_rem.wgpu_live[REMType_WGPUTextureView]--;
 
-REM_DESTROY_WGPU_ITEM(sampler, WGPUSampler, REMType_WGPUSampler, REMSampler,
-                      wgpuSamplerRelease(*handle));
-
-REM_DESTROY_WGPU_ITEM(shader_module, WGPUShaderModule, REMType_WGPUShaderModule,
-                      REMShaderModule, wgpuShaderModuleRelease(*handle));
+  *handle = NULL;
+  return REMStatus_Success;
+}
 
 /*
-
 
    ▗▄▄▄▖▗▖  ▗▖ ▗▄▄▖▗▄▄▄▖▗▖  ▗▖▗▄▄▄▖
    ▐▌   ▐▛▚▖▐▌▐▌     █  ▐▛▚▖▐▌▐▌
    ▐▛▀▀▘▐▌ ▝▜▌▐▌▝▜▌  █  ▐▌ ▝▜▌▐▛▀▀▘
    ▐▙▄▄▖▐▌  ▐▌▝▚▄▞▘▗▄█▄▖▐▌  ▐▌▐▙▄▄▖
 
-
+   Pooled objects. Pointers stay valid until rem_destroy_*().
  */
 
-// === NEW ENGINE ITEM===
+// === NEW ENGINE ITEM ===
 #define _(Type, RegistryType, Label, Capacity)                                 \
   Type *rem_new_##Label() {                                                    \
                                                                                \
-    const REMType type = REMType_##Type;                                       \
+    Pool *pool = rem_pool(REMType_##Type);                                     \
                                                                                \
-    size_t index = 0;                                                          \
-    void *new_item = frli_new_entry(                                           \
-        (void **)&g_rem.pools[type].entries, g_rem.pools[type].used,           \
-        &g_rem.pools[type].capacity, &g_rem.pools[type].count,                 \
-        g_rem.pools[type].type_size, &index, g_rem.pools[type].label);         \
+    uint32_t gen;                                                              \
+    const uint32_t index = pool_alloc(pool, &gen);                             \
                                                                                \
-    if (new_item == NULL)                                                      \
+    if (index == POOL_INVALID) {                                               \
+      logger_add(LoggerFlag_Error, "- %s: out of memory (live: %u).",          \
+                 rem_config[REMType_##Type].label, pool_live_count(pool));     \
       return NULL;                                                             \
+    }                                                                          \
                                                                                \
-    REMBucket *new_bucket = hsht_new_entry(                                    \
-        &g_rem.hash_table, (void *)new_item, HashTableNewFlag_None);           \
-                                                                               \
-    if (new_bucket == NULL)                                                    \
-      return NULL;                                                             \
-                                                                               \
-    new_bucket->handle = new_item;                                             \
-    new_bucket->pool_id = index;                                               \
-    new_bucket->owner = 0;                                                     \
-    new_bucket->key = 0;                                                       \
-    new_bucket->type = REMType_##Type;                                         \
-                                                                               \
-    return new_bucket->handle;                                                 \
+    return (Type *)pool_slot_ptr(pool, index);                                 \
   }
 
-REM_ENGINE_LIST(_);
+REM_ENGINE_LIST(_)
 #undef _
 
-// Destroy item based on its handle id (engine objects)
+// === DESTROY ENGINE ITEM ===
+// Lookup first: a pointer that isn't a live slot of this pool is rejected
+// without calling the destructor.
 #define _(Type, RegistryType, Label, Capacity)                                 \
   REMStatus rem_destroy_##Label(Type *handle) {                                \
-                                                                               \
-    const REMType type = REMType_##Type;                                       \
                                                                                \
     if (handle == NULL)                                                        \
       return REMStatus_NullResource;                                           \
                                                                                \
-    Label##_destroy(handle);                                                   \
+    Pool *pool = rem_pool(REMType_##Type);                                     \
                                                                                \
-    REMBucket *bucket = hsht_find(&g_rem.hash_table, handle, NULL);            \
-                                                                               \
-    if (!bucket)                                                               \
+    uint32_t index, gen;                                                       \
+    if (!pool_index_of(pool, handle, &index, &gen))                            \
       return REMStatus_UnfoundResource;                                        \
                                                                                \
-    FreeListStatus remove_pool = frli_remove_at_index(                         \
-        (void *)g_rem.pools[type].entries, g_rem.pools[type].used,             \
-        g_rem.pools[type].capacity, &g_rem.pools[type].count,                  \
-        g_rem.pools[type].type_size, bucket->pool_id,                          \
-        g_rem.pools[type].label);                                              \
+    Label##_destroy(handle); /* releases contents only */                      \
                                                                                \
-    HashTableStatus remove_hash =                                              \
-        hsht_remove_entry(&g_rem.hash_table, handle);                          \
-                                                                               \
-    if (remove_hash != HashTableStatus_Success)                                \
-      return REMStatus_UnfoundResource;                                        \
-                                                                               \
-    handle = NULL;                                                             \
-                                                                               \
-    return REMStatus_Success;                                                  \
+    return pool_free(pool, index, gen) ? REMStatus_Success                     \
+                                       : REMStatus_AllocFail;                  \
   }
 
-REM_ENGINE_LIST(_);
+REM_ENGINE_LIST(_)
 #undef _

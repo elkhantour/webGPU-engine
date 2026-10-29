@@ -36,23 +36,23 @@ void ubo_init(UBOManager *manager) {
 
   manager->id = reg_register(manager, RegEntryType_Ubo);
 
-  const uint16_t alignment = 16;
-  const uint16_t min_size = 256;
+  static const uint16_t ALIGNMENT = 16;
+  static const uint16_t MIN_SIZE = 256;
 
   for (UBOType i = 0; i < UBO_TYPE_COUNT; i++) {
 
-    if (ubo_type[i].size % alignment != 0)
+    if (ubo_type[i].size % ALIGNMENT != 0)
       logger_add(LoggerFlag_Warning,
                  "Attempting to set a UBO buffer (%d) not aligned with %hu "
                  "bytes (%lu). UBO Buffers require 256 alignment.",
-                 i, alignment, ubo_type[i].size);
+                 i, ALIGNMENT, ubo_type[i].size);
 
-    if (ubo_type[i].size < min_size)
+    if (ubo_type[i].size < MIN_SIZE)
       logger_add(
           LoggerFlag_Warning,
           "Attempting to set a buffer (%d) not with a type size inferior to %hu"
           "bytes (%lu).",
-          i, min_size, ubo_type[i].size);
+          i, MIN_SIZE, ubo_type[i].size);
 
     if (ubo_type[i].size > UBO_MAX_TYPE_SIZE)
       logger_add(LoggerFlag_Warning,
@@ -61,13 +61,13 @@ void ubo_init(UBOManager *manager) {
                  ", type size bytes %lu.",
                  i, UBO_MAX_TYPE_SIZE, ubo_type[i].size);
 
-    UBOBuffer *ubo = &manager->buffers[i];
-    ubo->type_size = ubo_type[i].size;
-    ubo->count = 0;
-    ubo->capacity = UBO_CAPACITY * UBO_MAX_TYPE_SIZE;
-    ubo->update_queue.capacity = UBO_UPDATE_QUEUE_CAPACITY;
-    ubo->handle = rem_new_buffer(&(WGPUBufferDescriptor){
-        .size = ubo->capacity,
+    UBOBuffer *buffer = &manager->buffers[i];
+    buffer->type_size = ubo_type[i].size;
+    buffer->count = 0;
+    buffer->capacity = UBO_CAPACITY * UBO_MAX_TYPE_SIZE;
+    buffer->update_queue.capacity = UBO_UPDATE_QUEUE_CAPACITY;
+    buffer->handle = rem_new_buffer(&(WGPUBufferDescriptor){
+        .size = buffer->capacity,
         .mappedAtCreation = false,
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform,
         .label = ubo_type[i].label,

@@ -113,8 +113,6 @@ void primitive_vertex_attribute_create(VertexAttribute *vert_attr,
   }
 }
 
-
-
 void primitive_vertex_index(VertexIndex *vert_index, cgltf_primitive *source) {
 
   // index

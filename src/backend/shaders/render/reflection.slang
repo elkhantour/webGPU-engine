@@ -26,7 +26,7 @@ import materials.pbr_surface;
 [shader("vertex")]
 PbrVertexOut vs_main(VertexIn input)
 {
-    return pbr_vertex(input, uMesh, uCamera, uViewport, /*tangent_in_world*/ true);
+    return pbr_vertex(input, uMesh, uCamera, uViewport);
 }
 
 [shader("fragment")]

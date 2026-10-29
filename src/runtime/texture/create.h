@@ -32,6 +32,7 @@ typedef struct {
   const TextureResolution height;
   const uint8_t channels;
   const unsigned char *data;
+  const WGPUTextureFormat format;
   const size_t size;
   bool flip;
 } TextureCreateMemoryDescriptor;
