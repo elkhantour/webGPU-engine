@@ -3,11 +3,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "backend/render_pass/render_pass.h"
 #include "backend/ubo.h"
 #include "core.h"
 #include "runtime/pipeline/render.h"
-#include "backend/renderer/render_pass/core.h"
-#include "backend/renderer/render_pass/render_pass.h"
+#include "utils/defines.h"
 #include "utils/mem.h"
 #include "utils/stli.h"
 #include "webgpu/webgpu.h"
@@ -23,76 +23,25 @@ typedef enum {
   LightCreateFlag_Shadow = 1 << 0,
 } LightCreateFlag;
 
-typedef struct {
-  const size_t view_offset;
-} LightShadowData;
-
 // light list
-typedef struct {
-  size_t count;
-  size_t capacity;
-  PointLight *entries[LIGHT_MAX_CAPACITY];
-} PointLightListBase;
+
+typedef STATIC_LIST(PointLight, LIGHT_MAX_CAPACITY) PointLightList;
+typedef STATIC_LIST(SpotLight, LIGHT_MAX_CAPACITY) SpotLightList;
+typedef STATIC_LIST(AmbientLight, LIGHT_MAX_CAPACITY) AmbientLightList;
+typedef STATIC_LIST(SunLight, LIGHT_MAX_CAPACITY) SunLightList;
+
+typedef DYNAMIC_LIST(PointLight *) PointLightRefList;
+typedef DYNAMIC_LIST(SpotLight *) SpotLightRefList;
+typedef DYNAMIC_LIST(AmbientLight *) AmbientLightRefList;
+typedef DYNAMIC_LIST(SunLight *) SunLightRefList;
 
 typedef struct {
-  size_t count;
-  size_t capacity;
-  PointLight *entries[LIGHT_MAX_CAPACITY];
-  RenderPass pass;
-} PointLightListShadow;
 
-typedef struct {
-  size_t count;
-  size_t capacity;
-  SpotLight *entries[LIGHT_MAX_CAPACITY];
-} SpotLightListBase;
-
-typedef struct {
-  size_t count;
-  size_t capacity;
-  SpotLight *entries[LIGHT_MAX_CAPACITY];
-  RenderPass pass;
-} SpotLightListShadow;
-
-typedef struct {
-  size_t count;
-  size_t capacity;
-  AmbientLight *entries[LIGHT_MAX_CAPACITY];
-} AmbientLightList;
-
-typedef struct {
-  size_t count;
-  size_t capacity;
-  SunLight *entries[LIGHT_MAX_CAPACITY];
-} SunLightListBase;
-
-typedef struct {
-  size_t count;
-  size_t capacity;
-  SunLight *entries[LIGHT_MAX_CAPACITY];
-  // uses Spotlight list shadow depth and color map
-} SunLightListShadow;
-
-typedef struct {
-  PointLightListBase base;
-  PointLightListShadow shadow;
-} PointLightList;
-
-typedef struct {
-  SunLightListBase base;
-  SunLightListShadow shadow;
-} SunLightList;
-
-typedef struct {
-  SpotLightListBase base;
-  SpotLightListShadow shadow;
-} SpotLightList;
-
-typedef struct {
   PointLightList point;
   SunLightList sun;
   SpotLightList spot;
   AmbientLightList ambient;
+
   UBOSlot ubo_slot;
 } LightList;
 
@@ -117,29 +66,23 @@ typedef struct {
               sizeof(uint32_t) * 4)];
 } __attribute__((aligned(16))) LightListUniform;
 
+EXTERN_C_BEGIN
+
 StaticListStatus light_list_create(LightList *, size_t);
 
-PointLight *light_list_new_point_light(PointLightListBase *);
+PointLight *light_list_new_point_light(PointLightList *);
 AmbientLight *light_list_new_ambient_light(AmbientLightList *);
-SpotLight *light_list_new_spot_light(SpotLightListBase *);
-SunLight *light_list_new_sun_light(SunLightListBase *);
+SpotLight *light_list_new_spot_light(SpotLightList *);
+SunLight *light_list_new_sun_light(SunLightList *);
 
-StaticListStatus light_list_point_shadow_insert(PointLightListShadow *,
-                                                PointLight *);
-StaticListStatus light_list_point_shadow_remove(PointLightListShadow *,
-                                                PointLight *);
+StaticListStatus light_list_point_insert(PointLightList *, PointLight *);
+StaticListStatus light_list_point_remove(PointLightList *, PointLight *);
 
-StaticListStatus light_list_sun_shadow_insert(SunLightListShadow *, SunLight *);
-StaticListStatus light_list_sun_shadow_remove(SunLightListShadow *, SunLight *);
+StaticListStatus light_list_sun_insert(SunLightList *, SunLight *);
+StaticListStatus light_list_sun_remove(SunLightList *, SunLight *);
 
-StaticListStatus light_list_spot_shadow_insert(SpotLightListShadow *,
-                                               SpotLight *);
-StaticListStatus light_list_spot_shadow_remove(SpotLightListShadow *,
-                                               SpotLight *);
-
-static inline size_t light_list_sun_layer_index(LightList *list, size_t index) {
-  return list->spot.shadow.count + index;
-}
+StaticListStatus light_list_spot_insert(SpotLightList *, SpotLight *);
+StaticListStatus light_list_spot_remove(SpotLightList *, SpotLight *);
 
 /**
    Return the offset (in bytes) of the light slot within the light list uniform.
@@ -167,4 +110,5 @@ LightListSlot light_list_uniform_new_entry(LightListUniform *, const LightType);
 
 void light_list_uniform_update(LightList *);
 
+EXTERN_C_END
 #endif

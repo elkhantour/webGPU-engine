@@ -7,8 +7,8 @@
 
 #include "backend/logger.h"
 #include "backend/registry.h"
-#include "backend/renderer/render_pass/core.h"
-#include "backend/renderer/render_pass/draw.h"
+#include "backend/render_pass/core.h"
+#include "backend/render_pass/draw.h"
 #include "backend/resource_manager.h"
 #include "backend/std_texture/core.h"
 #include "core.h"

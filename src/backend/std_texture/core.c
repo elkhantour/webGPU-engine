@@ -5,7 +5,7 @@
 
 #include "backend/context.h"
 #include "backend/logger.h"
-#include "backend/renderer/shadow_map/core.h"
+#include "backend/shadow_map/core.h"
 #include "backend/resource_manager.h"
 #include "runtime/texture/core.h"
 #include "webgpu/webgpu.h"

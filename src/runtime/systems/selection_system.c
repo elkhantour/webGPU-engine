@@ -1,8 +1,8 @@
 #include "selection_system.h"
+#include "backend/render_pass/core.h"
 #include "backend/renderer/core.h"
-#include "backend/renderer/render_pass/core.h"
-#include "backend/renderer/shadow_map/draw.h"
 #include "backend/shaders/core.h"
+#include "backend/shadow_map/draw.h"
 #include "runtime/camera/raycast/core.h"
 #include "runtime/gizmo/core.h"
 #include "runtime/input/core.h"
@@ -12,8 +12,8 @@
 #include "runtime/scene/mesh_query.h"
 #include "runtime/scene/selection/core.h"
 #include "runtime/scene/selection/filter.h"
-#include "runtime/systems/scene_system.h"
 #include "runtime/systems/mesh_route_system.h"
+#include "runtime/systems/scene_system.h"
 #include <stdint.h>
 
 // clang-format off
@@ -385,13 +385,7 @@ void selection_system_callback_mesh_shadow_transform(
     scene_mesh_query_with_flags(desc->scene, RendererMeshFlag_Shadow,
                                 &shadow_meshes);
 
-    renderer_draw_shadow_map_all(
-        &(ShadowMapDrawAllDescriptor){
-            .mesh_list = shadow_meshes,
-            .lights = &desc->scene->lights,
-            .profiler = &desc->renderer->profiler,
-        },
-        SCENE_DEBUG_UNDEFINED);
+    shadow_map_draw_all(&desc->renderer->shadow_map);
   }
 }
 

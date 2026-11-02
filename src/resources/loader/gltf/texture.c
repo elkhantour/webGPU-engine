@@ -261,14 +261,8 @@ static WGPUTextureFormat get_format(cgltf_data *data, const char *name) {
       cgltf_texture_view view =
           TEXTURE_ROUTE[t].texture_callback(data->materials[m]);
 
-      if (view.texture && texture_slot_name(view.texture) == name) {
-
-        // DEBUG
-        printf("[mat] %s | %s | %d\n", view.texture->image->uri, route->label,
-               route->format);
-
+      if (view.texture && texture_slot_name(view.texture) == name)
         return route->format;
-      }
     }
   }
 
@@ -351,19 +345,6 @@ void texture_load_worker_done(void *data) {
   slot->format = get_format(ctx->data, slot->name);
   slot->texture.format = slot->format;
 
-  {
-    // DEBUG
-    printf("Textures --------------- \n");
-    for (size_t i = 0; i < ctx->textures.count; i++) {
-      printf("[%lu] %s | %d (RGBA: %d, UNORM: %d)\n", i,
-             ctx->textures.entries[i].name, ctx->textures.entries[i].format,
-             WGPUTextureFormat_RGBA8UnormSrgb, WGPUTextureFormat_RGBA8Unorm);
-    }
-    printf("----------------------- \n");
-  }
-
-  // DEBUG
-  printf("Uploading with: %d\n", slot->texture.format);
   WGPUTexture gpu_texture = texture_mip_upload(&slot->texture);
   texture_mip_destroy(&slot->texture);
 

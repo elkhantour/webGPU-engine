@@ -1,6 +1,7 @@
 #include "mesh_build.h"
 #include "backend/job_system.h"
 #include "backend/renderer/core.h"
+#include "backend/shadow_map/core.h"
 #include "runtime/engine/core.h"
 #include "runtime/geometry/line/core.h"
 #include "runtime/geometry/vertex/attribute.h"
@@ -14,7 +15,8 @@
 #include "runtime/systems/mesh_route_system.h"
 
 // pipeline builders
-static inline void build_mesh_texture(Scene *, Mesh *, const RendererMeshFlag);
+static inline void build_mesh_texture(Scene *, Mesh *, ShadowMap *,
+                                      const RendererMeshFlag);
 static inline void build_mesh_solid(Scene *, Mesh *);
 static inline void build_mesh_wireframe(Scene *, Mesh *, Renderer *,
                                         JobSystem *);
@@ -33,7 +35,7 @@ RendererStatus renderer_build_mesh(Renderer *renderer, Scene *scene,
 
   // EDITORONLY
   build_mesh_outline(scene, mesh);
-  build_mesh_texture(scene, mesh, flag);
+  build_mesh_texture(scene, mesh, &renderer->shadow_map, flag);
 
   // only build those for dynamic meshes
   if ((flag & RendererMeshFlag_Fixed) == 0) {
@@ -54,7 +56,7 @@ RendererStatus renderer_build_mesh(Renderer *renderer, Scene *scene,
    Build meshes Texture shader in each scene list
    Establish pipeline from previously set bind groups
  */
-void build_mesh_texture(Scene *scene, Mesh *mesh,
+void build_mesh_texture(Scene *scene, Mesh *mesh, ShadowMap *shadow_map,
                         const RendererMeshFlag flags) {
 
 #ifdef VERBOSE_BUILDING_PHASE
@@ -101,9 +103,19 @@ void build_mesh_texture(Scene *scene, Mesh *mesh,
 
   if (RendererMeshFlag_Shadow & flags) {
 
-    mesh_shader_texture_update_shadow_maps(
-        mesh, scene->lights.point.shadow.pass.depth.attachment.view,
-        scene->lights.spot.shadow.pass.depth.attachment.view);
+#ifdef RENDER_SHADOW_AS_COLOR
+    WGPUTextureView point_view =
+        shadow_map_color_view(shadow_map, ShadowMapLightType_Point);
+    WGPUTextureView dir_view =
+        shadow_map_color_view(shadow_map, ShadowMapLightType_Directional);
+#else
+    WGPUTextureView point_view =
+        shadow_map_depth_view(shadow_map, ShadowMapLightType_Point);
+    WGPUTextureView dir_view =
+        shadow_map_depth_view(shadow_map, ShadowMapLightType_Directional);
+#endif
+
+    mesh_shader_texture_update_shadow_maps(mesh, point_view, dir_view);
 
     // create mesh shadow shader
     mesh_shader_create_standard(mesh, MeshShader_Shadow);
@@ -259,7 +271,7 @@ void build_mesh_wireframe(Scene *scene, Mesh *mesh, Renderer *renderer,
   job->mesh_generation = 0; // TODO: remove it?
 
   // DEBUG
-  //job_system_submit(job_system, wireframe_group, wireframe_worker_start,
+  // job_system_submit(job_system, wireframe_group, wireframe_worker_start,
   //                  wireframe_worker_done, job);
 }
 

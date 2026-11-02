@@ -83,40 +83,6 @@ const RenderPipeline *shader_pipeline(Shader *shader) {
 }
 
 /**
-   Access all uniforms from a bind group and check if it requires any update.
-   If the trigger returns true, then it update the gpu buffer with the new data
-   output from the callback
- */
-void shader_uniform_update(ShaderBindGroup *group) {
-
-  // update bindgroup entries (callback)
-  ShaderBindGroupUniformsDynamics *dynamic_uniforms = &group->uniforms_dynamics;
-
-  for (int j = 0; j < dynamic_uniforms->count; j++) {
-
-    ShaderBindGroupUniformEntry *current_entry = dynamic_uniforms->entries[j];
-
-    ShaderUniformUpdate *uniform_update = &current_entry->update;
-
-    // if no trigger (no gatekeep) or if trigger is true, then rewrite uniform
-    // with callback
-    // TODO: no update if out of frustrum ?
-    if (uniform_update->callback &&
-        (!uniform_update->trigger ||
-         uniform_update->trigger(uniform_update->data, current_entry->data))) {
-
-      // update uniform data
-      uniform_update->callback(uniform_update->data, current_entry->data);
-
-      // rewrite uniform to GPU
-      rem_write_buffer(current_entry->buffer, current_entry->offset,
-                       current_entry->data, current_entry->size,
-                       REMWriteFlag_None);
-    }
-  }
-}
-
-/**
    Build pipeline based on previously set bind groups.
 
  */

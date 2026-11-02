@@ -288,3 +288,24 @@ DynamicListStatus dyli_clone(const void *src_entries, const size_t src_count,
 
   return DynamicListStatus_Success;
 }
+
+
+DynamicListStatus dyli_find_index(const void *entries, size_t count,
+                                  size_t type_size, const void *target,
+                                  size_t *out_index) {
+
+  if (!entries || !target || !out_index || type_size == 0) {
+    return DynamicListStatus_InvalidArgument; // or whatever you use
+  }
+
+  const unsigned char *base = (const unsigned char *)entries;
+
+  for (size_t i = 0; i < count; i++) {
+    if (memcmp(base + i * type_size, target, type_size) == 0) {
+      *out_index = i;
+      return DynamicListStatus_Success;
+    }
+  }
+
+  return DynamicListStatus_UnfoundEntry;
+}

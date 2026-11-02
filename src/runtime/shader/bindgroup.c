@@ -71,31 +71,6 @@ void shader_bind_group_create(Shader *shader, bind_group_index index) {
               &sampler_group->count, sizeof(ShaderBindGroupSamplerEntry),
               SHADER_UNIFORMS_DEFAULT_CAPACITY, "Shader sampler list");
 
-  // dynamics uniforms
-  ShaderBindGroupUniformsDynamics *uniform_dyna =
-      &shader->bind_groups.entries[index].uniforms_dynamics;
-
-  ShaderBindGroupTexturesDynamics *texture_dyna =
-      &shader->bind_groups.entries[index].textures_dynamics;
-
-  ShaderBindGroupSamplersDynamics *sampler_dyna =
-      &shader->bind_groups.entries[index].samplers_dynamics;
-
-  // init Uniforms Dynamics array
-  dyli_create((void *)&uniform_dyna->entries, &uniform_dyna->capacity,
-              &uniform_dyna->count, sizeof(ShaderBindGroupUniformEntry *),
-              SHADER_UNIFORMS_DEFAULT_CAPACITY, "Shader uniform dynamic list");
-
-  // init Texture Dynamics array
-  dyli_create((void *)&texture_dyna->entries, &texture_dyna->capacity,
-              &texture_dyna->count, sizeof(ShaderBindGroupTextureEntry *),
-              SHADER_UNIFORMS_DEFAULT_CAPACITY, "Shader texture dynamic list");
-
-  // init Sampler Dynamics array
-  dyli_create((void *)&sampler_dyna->entries, &sampler_dyna->capacity,
-              &sampler_dyna->count, sizeof(ShaderBindGroupSamplerEntry *),
-              SHADER_UNIFORMS_DEFAULT_CAPACITY, "Shader sampler dynamic list");
-
   shader->bind_groups.count++;
 }
 
@@ -124,25 +99,10 @@ void shader_bind_group_clear(Shader *shader) {
               &current_group->samplers.capacity,
               &current_group->samplers.count);
 
-    // dynamics
-
-    // reseting uniforms
-    dyli_free((void *)&current_group->uniforms_dynamics.entries,
-              &current_group->uniforms_dynamics.capacity,
-              &current_group->uniforms_dynamics.count);
-
-    // reseting textures
-    dyli_free((void *)&current_group->textures_dynamics.entries,
-              &current_group->textures_dynamics.capacity,
-              &current_group->textures.count);
-
-    // reseting samplers
-    dyli_free((void *)&current_group->samplers_dynamics.entries,
-              &current_group->samplers_dynamics.capacity,
-              &current_group->samplers_dynamics.count);
-
-    wgpuBindGroupRelease(current_group->bind_group);
-    current_group->bind_group = NULL;
+    if (current_group->bind_group) {
+      wgpuBindGroupRelease(current_group->bind_group);
+      current_group->bind_group = NULL;
+    }
   }
 
   shader->bind_groups.count = 0;

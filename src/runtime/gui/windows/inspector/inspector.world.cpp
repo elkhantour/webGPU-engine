@@ -1,7 +1,7 @@
 #include "inspector.world.hpp"
-#include "backend/renderer/reflection/core.h"
-#include "backend/renderer/shadow_map/core.h"
-#include "backend/renderer/shadow_map/draw.h"
+#include "backend/reflection/core.h"
+#include "backend/shadow_map/core.h"
+#include "backend/shadow_map/draw.h"
 #include "imgui/imgui.h"
 #include "runtime/gui/components/combobox_resolution.hpp"
 #include "runtime/gui/components/input.hpp"
@@ -33,10 +33,10 @@ void UI::WorldTab::draw() {
   if (UI::TreeItem(gui, "Shadow").draw()) {
 
     { // === Point Light ===
-      const int width =
-          wgpuTextureGetWidth(scene->lights.point.shadow.pass.color.texture);
-      const int height =
-          wgpuTextureGetHeight(scene->lights.point.shadow.pass.color.texture);
+      const WGPUTexture color_texture =
+          renderer->shadow_map.lights[ShadowMapLightType_Point].texture.color;
+      const int width = wgpuTextureGetWidth(color_texture);
+      const int height = wgpuTextureGetHeight(color_texture);
 
       name_t default_value;
       name_compose(default_value, "%d x %d", width, height);
@@ -52,10 +52,11 @@ void UI::WorldTab::draw() {
     UI::Spacing(gui, ThemeSize_Space_Small).draw_y();
 
     { // === Directional Light ===
-      const int width =
-          wgpuTextureGetWidth(scene->lights.spot.shadow.pass.color.texture);
-      const int height =
-          wgpuTextureGetHeight(scene->lights.spot.shadow.pass.color.texture);
+      const WGPUTexture color_texture =
+          renderer->shadow_map.lights[ShadowMapLightType_Directional]
+              .texture.color;
+      const int width = wgpuTextureGetWidth(color_texture);
+      const int height = wgpuTextureGetHeight(color_texture);
 
       name_t default_value;
       name_compose(default_value, "%d x %d", width, height);
@@ -99,9 +100,11 @@ void UI::WorldTab::on_resolution_change_point_light(
   const MeshRefList *shadow_meshes;
   scene_mesh_query_with_flags(scene, RendererMeshFlag_Shadow, &shadow_meshes);
 
-  RenderPass *pass = &scene->lights.point.shadow.pass;
-  shadow_pass_update_resolution(pass, resolution,
-                                WGPUTextureViewDimension_CubeArray);
+  ShadowMapLight *group_light =
+      &renderer->shadow_map.lights[ShadowMapLightType_Point];
+
+  shadow_map_update_light_resolution(group_light, resolution,
+                                     WGPUTextureViewDimension_CubeArray);
 
   // update each mesh bound shadow view
   for (size_t j = 0; j < shadow_meshes->count; j++) {
@@ -110,23 +113,16 @@ void UI::WorldTab::on_resolution_change_point_light(
     const PipelineBindingLightList *binding =
         shader_pipeline(shader)->bindings.light_list;
 
+    WGPUTextureView shadow_map_view = group_light->view.depth;
+
     shader_update_texture_view(shader, binding->group, binding->point_texture,
-                               pass->depth.attachment.view, SHADOW_DEPTH_FORMAT,
+                               shadow_map_view, SHADOW_DEPTH_FORMAT,
                                ShaderUpdateFlag_None);
   }
 
   // redraw lights with new resolution
-  size_t i;
-  for (i = 0; i < scene->lights.point.shadow.count; i++) {
-    ShadowMapDrawPointLightDescriptor desc = {
-        .light = scene->lights.point.shadow.entries[i],
-        .pass = pass,
-        .texture_layer = i,
-        .command_encoder = NULL,
-        .profiler = &renderer->profiler,
-    };
-    renderer_draw_shadow_map_point_light(&desc, SCENE_DEBUG_UNDEFINED);
-  }
+  ShadowMap *sm = &renderer->shadow_map;
+  shadow_map_draw_all_point_light(sm);
 }
 
 void UI::WorldTab::on_resolution_change_dir_light(
@@ -136,9 +132,11 @@ void UI::WorldTab::on_resolution_change_dir_light(
   const MeshRefList *shadow_meshes;
   scene_mesh_query_with_flags(scene, RendererMeshFlag_Shadow, &shadow_meshes);
 
-  RenderPass *pass = &scene->lights.spot.shadow.pass;
-  shadow_pass_update_resolution(pass, resolution,
-                                WGPUTextureViewDimension_2DArray);
+  ShadowMapLight *group_light =
+      &renderer->shadow_map.lights[ShadowMapLightType_Directional];
+
+  shadow_map_update_light_resolution(group_light, resolution,
+                                     WGPUTextureViewDimension_2DArray);
 
   // update each mesh bound shadow view
   for (size_t j = 0; j < shadow_meshes->count; j++) {
@@ -147,35 +145,17 @@ void UI::WorldTab::on_resolution_change_dir_light(
     const PipelineBindingLightList *binding =
         shader_pipeline(shader)->bindings.light_list;
 
+    WGPUTextureView shadow_map_view = group_light->view.depth;
+
     shader_update_texture_view(shader, binding->group,
-                               binding->directional_texture,
-                               pass->depth.attachment.view, SHADOW_DEPTH_FORMAT,
-                               ShaderUpdateFlag_None);
+                               binding->directional_texture, shadow_map_view,
+                               SHADOW_DEPTH_FORMAT, ShaderUpdateFlag_None);
   }
 
   // redraw lights with new resolution
-  size_t i;
-  for (i = 0; i < scene->lights.sun.shadow.count; i++) {
-    ShadowMapDrawSunLightDescriptor desc = {
-        .light = scene->lights.sun.shadow.entries[i],
-        .pass = pass,
-        .texture_layer = light_list_sun_layer_index(&scene->lights, i),
-        .command_encoder = NULL,
-        .profiler = &renderer->profiler,
-    };
-    renderer_draw_shadow_map_sun_light(&desc, SCENE_DEBUG_UNDEFINED);
-  }
-
-  for (i = 0; i < scene->lights.spot.shadow.count; i++) {
-    ShadowMapDrawSpotLightDescriptor desc = {
-        .light = scene->lights.spot.shadow.entries[i],
-        .pass = pass,
-        .texture_layer = i,
-        .command_encoder = NULL,
-        .profiler = &renderer->profiler,
-    };
-    renderer_draw_shadow_map_spot_light(&desc, SCENE_DEBUG_UNDEFINED);
-  }
+  ShadowMap *sm = &renderer->shadow_map;
+  shadow_map_draw_all_spot_light(sm);
+  shadow_map_draw_all_sun_light(sm);
 }
 
 void UI::WorldTab::on_resolution_change_plane_reflection(

@@ -11,7 +11,7 @@
 
 #include "backend/context.h"
 #include "backend/postfx/core.h"
-#include "backend/renderer/render_pass/core.h"
+#include "backend/render_pass/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/draw.h"
 #include "runtime/mesh/shader/core.h"
@@ -45,7 +45,6 @@ static inline void render_pass_im_draw_common_pipeline(RenderPass *);
 static inline void render_pass_im_end(RenderPass *);
 static inline void render_pass_im_set_views(RenderPass *,
                                             const RenderPassDrawOptions *);
-
 // Pass List
 static inline void render_pass_list_draw(RenderPassList *);
 
@@ -105,7 +104,7 @@ void render_pass_list_draw(RenderPassList *list) {
 
   // Go through and draw each mode render pass
   for (size_t i = 0; i < list->count; i++) {
-    RenderPass *pass = &list->passes[i];
+    RenderPass *pass = &list->layers[i];
     pass->command_encoder = command_encoder;
     render_pass_draw(pass);
   }
@@ -222,7 +221,6 @@ void render_pass_im_draw(RenderPass *pass) {
   WGPURenderPassEncoder pass_encoder =
       wgpuCommandEncoderBeginRenderPass(pass->command_encoder, &pass_desc);
 
-
   // Go through and draw each mode render pass
   // Draw meshes
   // loop through mesh lists and draw meshes
@@ -231,8 +229,6 @@ void render_pass_im_draw(RenderPass *pass) {
     // retrieve layout
     RenderPassLayout *layout = &pass->layouts.entries[j];
     MeshDrawPacketList *packets = &layout->drawn_meshes;
-    render_pass_mesh_preprocessor_callback mesh_preprocessor =
-        layout->mesh_preprocessor_callback;
 
     // set 1 pipeline per layout
     WGPURenderPipeline pipeline =
@@ -243,10 +239,6 @@ void render_pass_im_draw(RenderPass *pass) {
     // draw mesh with layout callbacks
     for (size_t k = 0; k < packets->count; k++) {
       MeshDrawPacket *pack = &packets->entries[k];
-
-      if (mesh_preprocessor)
-        mesh_preprocessor(pass, pack->mesh, layout->mesh_preprocessor_data);
-
       shader_draw(pack->bindgroup_list, pack->shader_name, pass_encoder);
       mesh_draw(pack, pass_encoder);
     }

@@ -4,8 +4,8 @@
 #include "backend/compute/kawase.h"
 #include "backend/logger.h"
 #include "backend/profiler.h"
-#include "backend/renderer/render_pass/core.h"
-#include "backend/renderer/render_pass/draw.h"
+#include "backend/render_pass/core.h"
+#include "backend/render_pass/draw.h"
 #include "backend/resource_manager.h"
 #include "runtime/probe/reflection/plane.h"
 #include "runtime/scene/core.h"
@@ -41,7 +41,8 @@ static inline void renderer_draw_plane_reflection(void *data) {
       ProbeReflectionPlane *probe = &list->entries[i];
 
       // prevent self reflection by disabling probe meshes from the render pass
-      //FIX ME render_pass_disable_mesh_ref_list(&list->pass, &probe->excluded_meshes);
+      // FIXME render_pass_disable_mesh_ref_list(&list->pass,
+      // &probe->excluded_meshes);
 
       // define target layer
       WGPUTextureViewDescriptor target_color_desc = {
@@ -70,7 +71,7 @@ static inline void renderer_draw_plane_reflection(void *data) {
       ProbeReflectionListPreprocessorData preprocessor_data = {
           .camera_offset = probe->ubo_camera.id,
       };
-      render_pass_update_all_preprocessor_data(&list->pass, &preprocessor_data);
+      // FIXME render_pass_update_all_preprocessor_data(&list->pass, &preprocessor_data);
 
       // draw pass
       RenderPassDrawOptions target_views = {
@@ -88,7 +89,7 @@ static inline void renderer_draw_plane_reflection(void *data) {
       rem_destroy_view(&target_depth);
 
       // re-enable all meshes for next draw (dirty......)
-      //FIX ME render_pass_enable_all_mesh(&list->pass);
+      // FIXME render_pass_enable_all_mesh(&list->pass);
     }
   }
   render_pass_im_end(&list->pass);
@@ -161,8 +162,8 @@ static inline void probe_reflection_grid_list_draw(Renderer *renderer,
               .camera_offset = probe->ubo_camera[k].id};
 
           // update each mesh views/projections matrix
-          render_pass_update_all_preprocessor_data(&list->pass,
-                                                   &preprocessor_data);
+          // FIXMErender_pass_update_all_preprocessor_data(&list->pass,
+          //                                         &preprocessor_data);
 
           // draw pass
           RenderPassDrawOptions options = {

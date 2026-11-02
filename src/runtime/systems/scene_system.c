@@ -1,9 +1,9 @@
 #include "scene_system.h"
+#include "backend/reflection/draw.h"
+#include "backend/render_pass/texture.h"
 #include "backend/renderer/core.h"
-#include "backend/renderer/reflection/draw.h"
-#include "backend/renderer/render_pass/texture.h"
-#include "backend/renderer/shadow_map/draw.h"
 #include "backend/resource_manager.h"
+#include "backend/shadow_map/draw.h"
 #include "runtime/geometry/line/core.h"
 #include "runtime/light/core.h"
 #include "runtime/mesh/core.h"
@@ -46,13 +46,7 @@ void scene_system_set_draw_mode(Scene *scene, Renderer *renderer,
     const MeshRefList *shadow_meshes;
     scene_mesh_query_with_flags(scene, RendererMeshFlag_Shadow, &shadow_meshes);
 
-    renderer_draw_shadow_map_all(
-        &(ShadowMapDrawAllDescriptor){
-            .mesh_list = shadow_meshes,
-            .lights = &scene->lights,
-            .profiler = &renderer->profiler,
-        },
-        SCENE_DEBUG_UNDEFINED);
+    shadow_map_draw_all(&renderer->shadow_map);
   }
 
   // update renderer drawn render pass configuration

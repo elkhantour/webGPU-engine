@@ -5,7 +5,7 @@
 
 #include "backend/context.h"
 #include "backend/logger.h"
-#include "backend/renderer/render_pass/core.h"
+#include "backend/render_pass/core.h"
 #include "backend/resource_manager.h"
 #include "runtime/pipeline/render.h"
 #include "runtime/texture/core.h"
@@ -221,7 +221,7 @@ void render_pass_list_texture_create_shared_color(
   // replace all passes views with the shared one
   if (flag & RenderPassTextureFlag_AssignChildPasses)
     for (uint16_t i = 0; i < list->count; i++) {
-      RenderPass *pass = &list->passes[i];
+      RenderPass *pass = &list->layers[i];
 
       // eventually release the old one
       if (flag & RenderPassTextureFlag_ReleasePrevious)
@@ -251,7 +251,7 @@ void render_pass_list_texture_create_shared_depth(
   // replace all passes views with the shared one
   if (flag & RenderPassTextureFlag_AssignChildPasses)
     for (uint16_t i = 0; i < list->count; i++) {
-      RenderPass *pass = &list->passes[i];
+      RenderPass *pass = &list->layers[i];
 
       // eventually release the old one
       if (flag & RenderPassTextureFlag_ReleasePrevious)

@@ -1,7 +1,7 @@
 #include "inspector.render.hpp"
 #include "backend/postfx/core.h"
 #include "backend/renderer/core.h"
-#include "backend/renderer/render_pass/core.h"
+#include "backend/render_pass/core.h"
 #include "backend/shaders/core.h"
 #include "imgui/imgui.h"
 #include "runtime/gui/components/input.hpp"
@@ -142,7 +142,7 @@ void UI::RenderTab::draw() {
   }
 
   PostFx *texture_pass_fx =
-      &render_pass_list_last_pass(
+      &render_pass_list_last_layer(
            renderer_mode_mesh_pass_list(renderer, RendererDrawMode_Texture))
            ->post_fx;
 

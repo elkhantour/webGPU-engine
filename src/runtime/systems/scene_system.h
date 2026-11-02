@@ -20,7 +20,7 @@ static inline void scene_system_set_post_fx_bloom(Scene *scene, Renderer *rd,
   // retrieve the pass fx of the last texture pass
   // TODO: make the access more easy; rn not intuitive
   PostFx *texture_pass_fx =
-      &render_pass_list_last_pass(
+      &render_pass_list_last_layer(
            renderer_mode_mesh_pass_list(rd, RendererDrawMode_Texture))
            ->post_fx;
 
@@ -33,7 +33,7 @@ scene_system_set_post_fx_composite(Scene *scene, Renderer *rd,
                                    const CompositeUniform composite) {
   // retrieve the pass fx of the last texture pass
   PostFx *texture_pass_fx =
-      &render_pass_list_last_pass(
+      &render_pass_list_last_layer(
            renderer_mode_mesh_pass_list(rd, RendererDrawMode_Texture))
            ->post_fx;
 
@@ -54,12 +54,11 @@ static inline void scene_system_update_vertex_count(Scene *scene,
   float denom = 1.0f / 3;
 
   for (size_t i = 0; i < active_list->count; i++)
-    for (size_t j = 0; j < active_list->passes[i].layouts.count; j++)
+    for (size_t j = 0; j < active_list->layers[i].layouts.count; j++)
       for (size_t k = 0;
-           k <
-           active_list->passes[i].layouts.entries[j].drawn_meshes.count;
+           k < active_list->layers[i].layouts.entries[j].drawn_meshes.count;
            k++)
-        count += active_list->passes[i]
+        count += active_list->layers[i]
                      .layouts.entries[j]
                      .drawn_meshes.entries[k]
                      .count *
@@ -112,10 +111,8 @@ static inline void scene_system_update_draw_call_count(Scene *scene,
   RenderPassList *active_list = renderer_mesh_pass_list(rd, rd->draw_mode);
 
   for (size_t i = 0; i < active_list->count; i++)
-    for (size_t j = 0; j < active_list->passes[i].layouts.count; j++)
-      count += active_list->passes[i]
-                   .layouts.entries[j]
-                   .drawn_meshes.count;
+    for (size_t j = 0; j < active_list->layers[i].layouts.count; j++)
+      count += active_list->layers[i].layouts.entries[j].drawn_meshes.count;
 
   scene_stat_update_draw_call_count(scene, count);
 }

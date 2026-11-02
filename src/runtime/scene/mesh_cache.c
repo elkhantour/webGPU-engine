@@ -22,8 +22,7 @@ static bool match_without_flag(const Mesh *mesh, size_t key) {
 }
 
 static bool match_layer(const Mesh *mesh, size_t key) {
-  return mesh->render_config.layer == RendererLayer_All ||
-         (mesh->render_config.layer & key) != 0;
+  return (mesh->render_config.layer & key) != 0;
 }
 
 static bool match_pipeline(const Mesh *mesh, size_t key) {
@@ -46,9 +45,9 @@ static bool mask_to_index(size_t mask, size_t count, size_t *out) {
 }
 
 // (type, key) -> the cache slot and its match function.
-static bool cache_resolve(SceneMeshCache *cache,
-                          const SceneMeshCacheType type, const size_t key,
-                          MeshRefList **slot, MeshMatchFn *match) {
+static bool cache_resolve(SceneMeshCache *cache, const SceneMeshCacheType type,
+                          const size_t key, MeshRefList **slot,
+                          MeshMatchFn *match) {
   size_t i;
 
   switch (type) {
@@ -68,9 +67,6 @@ static bool cache_resolve(SceneMeshCache *cache,
 
   case SceneMeshCacheType_Layer:
     // "All" is not a single bit and has no slot: the query layer handles it
-    if (key == RendererLayer_All ||
-        !mask_to_index(key, SCENE_MESH_CACHE_LAYER_COUNT, &i))
-      return false;
     *slot = &cache->layers[i];
     *match = match_layer;
     return true;
@@ -94,8 +90,8 @@ static void slot_free(MeshRefList *slot) {
 }
 
 static SceneMeshCacheStatus slot_build(const SceneMeshCache *cache,
-                                          MeshRefList *slot, MeshMatchFn match,
-                                          size_t key) {
+                                       MeshRefList *slot, MeshMatchFn match,
+                                       size_t key) {
   const MeshRefList *src = cache->source;
   const size_t capacity = cache->default_capacity > 0
                               ? cache->default_capacity
@@ -119,8 +115,8 @@ static SceneMeshCacheStatus slot_build(const SceneMeshCache *cache,
 }
 
 static SceneMeshCacheStatus slot_refresh(const SceneMeshCache *cache,
-                                            MeshRefList *slot,
-                                            MeshMatchFn match, size_t key) {
+                                         MeshRefList *slot, MeshMatchFn match,
+                                         size_t key) {
   const MeshRefList *src = cache->source;
 
   if (slot->entries == NULL)
@@ -178,8 +174,8 @@ static void slots_free(MeshRefList *slots, size_t count) {
 // ---------------------------------------------------------------------------
 
 SceneMeshCacheStatus scene_mesh_cache_init(SceneMeshCache *cache,
-                                                 const MeshRefList *source,
-                                                 const size_t capacity) {
+                                           const MeshRefList *source,
+                                           const size_t capacity) {
   if (source == NULL)
     return SceneMeshCacheStatus_UndefError;
 
@@ -203,9 +199,8 @@ SceneMeshCacheStatus scene_mesh_cache_destroy(SceneMeshCache *cache) {
   return SceneMeshCacheStatus_Success;
 }
 
-SceneMeshCacheStatus
-scene_mesh_cache_set_source(SceneMeshCache *cache,
-                               const MeshRefList *source) {
+SceneMeshCacheStatus scene_mesh_cache_set_source(SceneMeshCache *cache,
+                                                 const MeshRefList *source) {
   if (source == NULL)
     return SceneMeshCacheStatus_UndefError;
 
@@ -223,9 +218,9 @@ const MeshRefList *scene_mesh_cache_source(const SceneMeshCache *cache) {
 // ---------------------------------------------------------------------------
 
 SceneMeshCacheStatus scene_mesh_cache_get(SceneMeshCache *cache,
-                                                const SceneMeshCacheType type,
-                                                const size_t key,
-                                                const MeshRefList **result) {
+                                          const SceneMeshCacheType type,
+                                          const size_t key,
+                                          const MeshRefList **result) {
   MeshRefList *slot;
   MeshMatchFn match;
 
@@ -246,10 +241,9 @@ SceneMeshCacheStatus scene_mesh_cache_get(SceneMeshCache *cache,
 // refresh
 // ---------------------------------------------------------------------------
 
-SceneMeshCacheStatus
-scene_mesh_cache_refresh(SceneMeshCache *cache,
-                            const SceneMeshCacheType type,
-                            const size_t key) {
+SceneMeshCacheStatus scene_mesh_cache_refresh(SceneMeshCache *cache,
+                                              const SceneMeshCacheType type,
+                                              const size_t key) {
   MeshRefList *slot;
   MeshMatchFn match;
 
@@ -259,18 +253,17 @@ scene_mesh_cache_refresh(SceneMeshCache *cache,
   return slot_refresh(cache, slot, match, key);
 }
 
-SceneMeshCacheStatus
-scene_mesh_cache_refresh_all(SceneMeshCache *cache) {
+SceneMeshCacheStatus scene_mesh_cache_refresh_all(SceneMeshCache *cache) {
   SceneMeshCacheStatus result = SceneMeshCacheStatus_Success;
 
 #define REFRESH(slots, count, match, is_mask)                                  \
   if (slots_refresh_existing(cache, slots, count, match, is_mask) !=           \
-      SceneMeshCacheStatus_Success)                                         \
+      SceneMeshCacheStatus_Success)                                            \
     result = SceneMeshCacheStatus_UndefError;
 
   REFRESH(cache->flags, SCENE_MESH_CACHE_FLAG_COUNT, match_flag, true)
-  REFRESH(cache->without_flags, SCENE_MESH_CACHE_FLAG_COUNT,
-          match_without_flag, true)
+  REFRESH(cache->without_flags, SCENE_MESH_CACHE_FLAG_COUNT, match_without_flag,
+          true)
   REFRESH(cache->layers, SCENE_MESH_CACHE_LAYER_COUNT, match_layer, true)
   REFRESH(cache->pipelines, SCENE_MESH_CACHE_PIPELINE_COUNT, match_pipeline,
           false)

@@ -7,6 +7,7 @@
 #include <webgpu/webgpu.h>
 
 #include "backend/postfx/core.h"
+#include "backend/renderer/mesh_config.h"
 #include "backend/shaders/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/draw.h"
@@ -30,8 +31,6 @@ typedef struct RenderPassList RenderPassList;
 typedef struct RenderPassDrawOptions RenderPassDrawOptions;
 
 typedef void (*render_pass_draw_callback)(RenderPass *);
-typedef void (*render_pass_mesh_preprocessor_callback)(const RenderPass *,
-                                                       Mesh *, void *);
 typedef void (*render_pass_list_draw_callback)(RenderPassList *);
 
 typedef enum {
@@ -42,6 +41,16 @@ typedef enum {
   RenderPassStatus_MeshAlreadyEnabled,
   RenderPassStatus_UndefError,
 } RenderPassStatus;
+
+typedef enum {
+  RenderPassLayoutAcceptStatus_Accepted,
+  RenderPassLayoutAcceptStatus_Hidden,
+  RenderPassLayoutAcceptStatus_Unmatch_DrawMode,
+  RenderPassLayoutAcceptStatus_Unmatch_Layer,
+  RenderPassLayoutAcceptStatus_Unmatch_Pipeline,
+  RenderPassLayoutAcceptStatus_Undefined_Shader,
+  RenderPassLayoutAcceptStatus_Outline,
+} RenderPassLayoutAcceptStatus;
 
 /**
    Since the priority for hot path (draw loop) is cache hit, we reorganise the
@@ -77,23 +86,17 @@ typedef struct {
   MeshShader shader;
   RenderPipelineType pipeline;
   mesh_get_topology_callback topology_callback;
-  render_pass_mesh_preprocessor_callback mesh_preprocessor_callback;
-  void *mesh_preprocessor_data;
   MeshDrawPacketList
       drawn_meshes; // Compact and cache friendly data from mesh and shader
 } RenderPassLayout;
 
-typedef struct {
-  RenderPassLayout entries[RENDER_PASS_MAX_DRAW_LIST];
-  size_t count;
-} RenderPassLayoutList;
+typedef STATIC_LIST(RenderPassLayout,
+                    RENDER_PASS_MAX_DRAW_LIST) RenderPassLayoutList;
 
 typedef struct {
   MeshShader shader;
   RenderPipelineType pipeline;
   mesh_get_topology_callback topology_callback;
-  render_pass_mesh_preprocessor_callback mesh_preprocessor_callback;
-  void *mesh_preprocessor_data;
 } RenderPassLayoutDescriptor;
 
 typedef struct {
@@ -151,7 +154,7 @@ struct RenderPassList {
 
   } shared;
 
-  RenderPass passes[RENDER_PASS_MAX_DRAW_LIST];
+  RenderPass layers[RENDER_PASS_MAX_DRAW_LIST];
   size_t count;
   render_pass_list_draw_callback draw_callback;
 };
@@ -200,8 +203,8 @@ RenderPass *render_pass_list_insert_pass(RenderPassList *,
 
 void render_pass_list_update_child_passes_callback(RenderPassList *);
 
-static inline RenderPass *render_pass_list_last_pass(RenderPassList *list) {
-  return &list->passes[list->count - 1];
+static inline RenderPass *render_pass_list_last_layer(RenderPassList *list) {
+  return &list->layers[list->count - 1];
 }
 
 /* === Pass === */
@@ -210,10 +213,7 @@ void render_pass_draw_list_copy(const RenderPassLayoutListDescriptor *,
                                 RenderPassLayoutList *);
 
 void render_pass_create(RenderPass *, const RenderPassCreateDescriptor *);
-RenderPassStatus render_pass_update_preprocessor_data(RenderPass *, uint8_t,
-                                                      void *);
-
-RenderPassStatus render_pass_update_all_preprocessor_data(RenderPass *, void *);
+void render_pass_destroy(RenderPass *);
 
 StaticListStatus render_pass_view_color_insert(RenderPass *, WGPUTextureView);
 StaticListStatus render_pass_view_depth_insert(RenderPass *, WGPUTextureView);
@@ -228,10 +228,15 @@ void render_pass_sync_drawn_layouts(RenderPass *);
 
 /* === Layout === */
 
-bool render_pass_layout_accepts(Mesh *mesh, const RenderPassLayout *layout,
-                                const size_t mode, const size_t layer);
+RenderPassLayoutAcceptStatus
+render_pass_layout_accepts(Mesh *mesh, const RenderPassLayout *layout,
+                           const RendererDrawMode mode, const size_t layer);
 
 bool render_pass_layout_add_mesh(RenderPassLayout *layout, Mesh *mesh);
+
+bool render_pass_layout_toggle_mesh(RenderPassLayout *layout, Mesh *mesh,
+                                    RendererDrawMode mode, RendererLayer layer,
+                                    bool remove_all);
 
 EXTERN_C_END
 

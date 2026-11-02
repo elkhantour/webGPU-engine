@@ -62,6 +62,9 @@ void spot_light_uniform_update(SpotLight *light) {
 
 void sun_light_uniform_update(SunLight *light) {
 
+  // DEBUG
+  printf("<%p> update sun uniform\n", light);
+
   SunLightUniform *uniform = (SunLightUniform *)light->ubo_uniform.uniform.sun;
 
   uniform->intensity = light->intensity;
@@ -89,8 +92,7 @@ void light_list_uniform_update(LightList *list) {
   LightListUniform *uniform = (LightListUniform *)list->ubo_slot.uniform;
 
   uniform->ambient_count = list->ambient.count;
-  uniform->point_count = list->point.base.count;
-  uniform->spot_count = list->spot.base.count;
-  uniform->sun_count = list->sun.base.count;
-
+  uniform->point_count = list->point.count;
+  uniform->spot_count = list->spot.count;
+  uniform->sun_count = list->sun.count;
 }

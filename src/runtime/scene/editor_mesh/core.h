@@ -87,7 +87,8 @@ typedef struct {
 } SceneEditorMeshListArray;
 
 typedef struct {
-  size_t target_list_index;
+  size_t target_list_index; // the index of the object in it's parent list, so
+                            // no need for lookup
   Camera *camera;
   Viewport *viewport;
 } SEMCreateDescriptor;

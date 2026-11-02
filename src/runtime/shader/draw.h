@@ -37,9 +37,6 @@ static inline void shader_draw(ShaderBindGroupList *bindgroup_list,
 
     ShaderBindGroup *bind_group = &bindgroup_list->entries[i];
 
-    // update bindgroup uniforms data
-    shader_uniform_update(bind_group);
-
     // link bind group
     wgpuRenderPassEncoderSetBindGroup(render_pass, i, bind_group->bind_group,
                                       bind_group->offset.count,

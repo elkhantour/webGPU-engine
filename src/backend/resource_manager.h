@@ -36,8 +36,11 @@ typedef enum {
 
 // clang-format off
 
-// WGPU objects are opaque pointers: they are NOT pooled and NOT wrapped. They
-// only get a live counter (leak checking). The capacity column is unused.
+// WGPU objects are opaque pointers: they are NOT wrapped, the API keeps
+// returning the raw handle. Each live object gets a slot in a tracking pool
+// (enumeration, leak checking): the slot holds just the handle, except for
+// views which hold a REMViewRecord.
+// The capacity column is the INITIAL capacity of that tracking pool.
 //
 //      Type         |             Registry type           |         Label          |        Pool Capacity
 #define REM_WGPU_LIST(_)                                                                                                                                  \
@@ -87,13 +90,25 @@ typedef enum { REM_WGPU_LIST(_) REM_ENGINE_LIST(_) REMType_Count } REMType;
 _Static_assert(REMType_Mesh == REM_WGPU_ITEM_COUNT,
                "REM_WGPU_ITEM_COUNT doesn't match REM_WGPU_LIST");
 
+// Tracking slot of a view (the only WGPU type with extra data).
+// `handle` must stay the first member: the generic tracking code reads it.
+typedef struct {
+  WGPUTextureView handle;
+  WGPUTexture texture;                // parent texture
+  WGPUTextureViewDimension dimension; // resolved, never Undefined
+  uint32_t base_mip;
+  uint32_t base_layer;
+} REMViewRecord;
+
+_Static_assert(offsetof(REMViewRecord, handle) == 0,
+               "REMViewRecord.handle must be the first member");
+
 typedef struct ResourceManager {
 
-  // Indexed by REMType. Only engine types (>= REM_WGPU_ITEM_COUNT) are used.
+  // Indexed by REMType.
+  // 1. WGPU types hold their handle: (views: a REMViewRecord)
+  // 2. Engine types hold the objects themselves
   Pool pools[REM_TYPE_COUNT];
-
-  // Live counters for raw WGPU objects, indexed by REMType.
-  uint32_t wgpu_live[REM_WGPU_ITEM_COUNT];
 
 } ResourceManager;
 
@@ -158,6 +173,27 @@ REMStatus rem_destroy_view(WGPUTextureView *);
 REMStatus rem_destroy_buffer(WGPUBuffer *);
 REMStatus rem_destroy_shader_module(WGPUShaderModule *);
 
+// === Enumerate live WGPU objects ===
+// void rem_get_all_<label>(Type *entries, size_t *count);
+//   entries == NULL : *count = number of live objects
+//   entries != NULL : copies up to *count handles, *count = number written
+// Typical use: call once with NULL for the size, then again with a buffer.
+#define _(Type, RegistryType, Label, PoolCapacity)                             \
+  void rem_get_all_##Label(Type *entries, size_t *count);
+REM_WGPU_LIST(_)
+#undef _
+
+// Compat alias for the texture viewer.
+#define rem_get_texture_views rem_get_all_view
+
+// Record of a tracked view (parent texture, resolved dimension, base mip and
+// layer), or NULL if the view isn't tracked. The pointer stays valid until the
+// view is destroyed. O(live views).
+const REMViewRecord *rem_get_view_record(WGPUTextureView);
+
+// Shortcut: parent texture of a tracked view, or NULL.
+WGPUTexture rem_get_view_texture(WGPUTextureView);
+
 // === Engine objects (pooled, pointer-stable) ===
 // rem_new_<label>() returns a zeroed object, or NULL on out-of-memory.
 // rem_destroy_<label>() calls <label>_destroy() (contents only), then
@@ -166,6 +202,14 @@ REMStatus rem_destroy_shader_module(WGPUShaderModule *);
   Type *rem_new_##Label();                                                     \
   REMStatus rem_destroy_##Label(Type *);
 
+REM_ENGINE_LIST(_)
+#undef _
+
+// === Enumerate live engine objects ===
+// void rem_get_all_<label>(Type **entries, size_t *count);
+// Same count/copy semantics as the WGPU getters. Pointers are pool-stable.
+#define _(Type, RegistryType, Label, PoolCapacity)                             \
+  void rem_get_all_##Label(Type **entries, size_t *count);
 REM_ENGINE_LIST(_)
 #undef _
 

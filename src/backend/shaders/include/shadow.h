@@ -7,7 +7,7 @@
 #include "runtime/viewport/viewport.h"
 #include "utils/path.h"
 #include "commons.h"
-#include "backend/renderer/shadow_map/core.h"
+#include "backend/shadow_map/core.h"
 
 #include <webgpu/webgpu.h>
 

@@ -5,9 +5,9 @@
 #include "backend/job_system.h"
 #include "backend/logger.h"
 #include "backend/renderer/core.h"
-#include "backend/renderer/reflection/core.h"
-#include "backend/renderer/reflection/draw.h"
-#include "backend/renderer/shadow_map/draw.h"
+#include "backend/reflection/core.h"
+#include "backend/reflection/draw.h"
+#include "backend/shadow_map/draw.h"
 #include "backend/resource_manager.h"
 #include "backend/shaders/core.h"
 #include "runtime/engine/add.h"
@@ -20,7 +20,6 @@
 #include "runtime/systems/ubo_system.h"
 #include <stdint.h>
 
-static inline void engine_init_shadow_map(LightList *, Renderer *, Scene *);
 static inline void engine_init_reflection_pass(ProbeList *, Renderer *,
                                                Scene *);
 static inline void engine_init_gizmo(Engine *, Gizmo *);
@@ -32,6 +31,7 @@ EngineStatus engine_init(Engine *engine) {
 
   memset(engine, 0, sizeof(Engine));
 
+  Renderer *renderer;
   {
     // === Renderer ===
     engine->renderer = rem_new_renderer();
@@ -41,6 +41,7 @@ EngineStatus engine_init(Engine *engine) {
                         .dpi = 1.0,
                     });
     renderer_create_layouts(engine_get_renderer(engine));
+    renderer = engine_get_renderer(engine);
   }
 
   {
@@ -70,42 +71,40 @@ EngineStatus engine_init(Engine *engine) {
                                      });
     engine_set_active_scene(engine, scene);
 
-    selection_system_init(&scene->selection, scene,
-                          engine_get_renderer(engine));
+    selection_system_init(&scene->selection, scene, renderer);
   }
 
   {
     // === GUI ===
     engine->gui = rem_new_gui();
-    gui_init(engine_get_gui(engine),
-             &(GuiDescriptor){
-                 .active_scene = scene,
-                 .renderer = engine_get_renderer(engine),
-                 .theme = &g_theme,
-                 .dpi = context_dpi(),
-             });
+    gui_init(engine_get_gui(engine), &(GuiDescriptor){
+                                         .active_scene = scene,
+                                         .renderer = renderer,
+                                         .theme = &g_theme,
+                                         .dpi = context_dpi(),
+                                     });
   }
 
   {
     // === Loop Callbacks ===
 
     // clang-format off
-    renderer_add_draw_callback(engine_get_renderer(engine),
+    renderer_add_draw_callback(renderer,
                                ubo_system_draw_callback,
 			       (void *)ubo,
                                RendererDrawMode_All);
 
-    renderer_add_draw_callback(engine_get_renderer(engine),
+    renderer_add_draw_callback(renderer,
 			       renderer_draw_layout_callback,
 			       (void *)engine_get_renderer(engine),
 			       RendererDrawMode_All);
 
-    renderer_add_draw_callback(engine_get_renderer(engine),
+    renderer_add_draw_callback(renderer,
 			       gui_draw_callback,
 			       (void *)engine_get_gui(engine),
                                RendererDrawMode_All);
 
-    renderer_add_draw_callback(engine_get_renderer(engine),
+    renderer_add_draw_callback(renderer,
 			       job_system_draw_callback,
 			       (void *)engine->job_system,
                                RendererDrawMode_All);
@@ -116,7 +115,11 @@ EngineStatus engine_init(Engine *engine) {
   engine_scene_add_mesh(engine, scene->grid, NULL,
                         EngineAddFlag_Unselectable | EngineAddFlag_TreeHide);
 
-  engine_init_shadow_map(&scene->lights, engine_get_renderer(engine), scene);
+  shadow_map_init(&renderer->shadow_map, &(ShadowMapInitDescriptor){
+                                             .lights = &scene->lights,
+                                             .profiler = &renderer->profiler,
+                                         });
+
   engine_init_reflection_pass(&scene->probes, engine_get_renderer(engine),
                               scene);
 
@@ -163,7 +166,6 @@ void engine_init_reflection_pass(ProbeList *list, Renderer *renderer,
     reflection_draw_list.entries[i] = (RenderPassLayoutDescriptor){
         .shader = MeshShader_Reflection,
         .topology_callback = mesh_topology_base,
-        .mesh_preprocessor_callback = probe_reflection_list_draw_preprocessor,
     };
 
   // grid reflection
@@ -195,31 +197,6 @@ void engine_init_reflection_pass(ProbeList *list, Renderer *renderer,
           .label = "Plane Reflection Kawase Pass",
           .source_texture = list->reflection_plane.pass.color.texture,
       });
-}
-
-void engine_init_shadow_map(LightList *list, Renderer *renderer, Scene *scene) {
-
-  const MeshRefList *shadow_mesh_lists;
-  scene_mesh_query_from_pipeline(scene, RenderPipelineType_Shadow,
-                                 &shadow_mesh_lists);
-
-  RenderPassLayoutListDescriptor shadow_draw_list = {
-      .count = shadow_mesh_lists->count,
-  };
-
-  for (uint8_t i = 0; i < shadow_mesh_lists->count; i++)
-    shadow_draw_list.entries[i] = (RenderPassLayoutDescriptor){
-        .shader = MeshShader_Shadow,
-        .pipeline = RenderPipelineType_Shadow,
-        .topology_callback = mesh_topology_base,
-        .mesh_preprocessor_callback = shadow_map_pass_preprocessor_callback,
-        .mesh_preprocessor_data = (void *)NULL,
-    };
-
-  shadow_map_init(&(ShadowMapInitDescriptor){
-      .lights = list,
-      .draw_list = &shadow_draw_list,
-  });
 }
 
 // Create transform gizmos and add them to editor gizmo

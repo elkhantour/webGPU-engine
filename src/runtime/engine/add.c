@@ -1,12 +1,13 @@
 #include "add.h"
 #include "backend/logger.h"
+#include "backend/reflection/draw.h"
+#include "backend/render_pass/core.h"
 #include "backend/renderer/core.h"
 #include "backend/renderer/mesh_build.h"
-#include "backend/renderer/reflection/draw.h"
-#include "backend/renderer/render_pass/core.h"
-#include "backend/renderer/shadow_map/draw.h"
 #include "backend/resource_manager.h"
 #include "backend/shaders/core.h"
+#include "backend/shadow_map/core.h"
+#include "backend/shadow_map/draw.h"
 #include "runtime/engine/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/ref_list.h"
@@ -14,7 +15,7 @@
 #include "runtime/pipeline/render.h"
 #include "runtime/scene/add.h"
 #include "runtime/scene/core.h"
-#include "runtime/scene/mesh_cache.h" // ASSUMED path (scene_mesh_cache_refresh_all)
+#include "runtime/scene/mesh_cache.h"
 #include "runtime/scene/mesh_query.h"
 #include "runtime/scene/selection/core.h"
 #include "runtime/scene/stat.h"
@@ -31,10 +32,6 @@ static void engine_update_shadow_maps(Engine *);
 
 Scene *engine_add_scene(Engine *engine, const SceneCreateDescriptor *desc) {
 
-
-    // DEBUG
-    printf("engine scene count: %u\n", engine->scenes.count);
-    
   if (engine->scenes.count >= ENGINE_SCENE_CAPACITY) {
     logger_add(LoggerFlag_Error, "Engine reached max scene capacity (%lu)",
                (unsigned long)ENGINE_SCENE_CAPACITY);
@@ -74,18 +71,15 @@ void engine_update_shadow_maps(Engine *engine) {
     return;
 
   const MeshRefList *shadow_meshes = NULL;
-  if (scene_mesh_query_with_flags(scene, RendererMeshFlag_Shadow,
-                                  &shadow_meshes) !=
-      SceneMeshCacheStatus_Success)
+  const SceneMeshCacheStatus query = scene_mesh_query_with_flags(
+      scene, RendererMeshFlag_Shadow, &shadow_meshes);
+
+  // Sync the shadow mesh list with the light/sun/spot RenderPass ?
+
+  if (query != SceneMeshCacheStatus_Success)
     return;
 
-  renderer_draw_shadow_map_all(
-      &(ShadowMapDrawAllDescriptor){
-          .mesh_list = shadow_meshes,
-          .lights = &scene->lights,
-          .profiler = &renderer->profiler,
-      },
-      SCENE_DEBUG_UNDEFINED);
+  shadow_map_draw_all(&renderer->shadow_map);
 }
 
 // === Add Light ===
@@ -105,19 +99,16 @@ SceneEditorMeshList *engine_scene_add_point_light(Engine *engine,
     *dest = light;
 
   // recompute shadow map if render mode
-  if ((flag & LightCreateFlag_Shadow) &&
-      renderer_draw_mode(renderer) == RendererDrawMode_Texture) {
+  if (flag & LightCreateFlag_Shadow) {
 
-    PointLightListShadow *shadow_list = &scene->lights.point.shadow;
-    renderer_draw_shadow_map_point_light(
-        &(ShadowMapDrawPointLightDescriptor){
-            .light = light,
-            .pass = &shadow_list->pass,
-            .texture_layer = shadow_list->count,
-            .command_encoder = NULL,
-            .profiler = &renderer->profiler,
-        },
-        SCENE_DEBUG_UNDEFINED);
+    ShadowMap *sm = &renderer->shadow_map;
+    shadow_map_register_point_light(sm, light);
+
+    if (renderer_draw_mode(renderer) == RendererDrawMode_Texture) {
+      ShadowMapLight *light_group = &sm->lights[ShadowMapLightType_Point];
+      const size_t index = light_group->caster.point.count - 1;
+      shadow_map_draw_point_light(sm, index, NULL);
+    }
   }
 
   engine_scene_add_sem(engine, sem_list);
@@ -138,21 +129,18 @@ SceneEditorMeshList *engine_scene_add_spot_light(Engine *engine,
       scene_add_spot_light(scene, desc, flag, &light);
 
   if (dest)
-    *dest = light; // was `light = *dest` (reversed)
+    *dest = light;
 
-  if ((flag & LightCreateFlag_Shadow) &&
-      renderer_draw_mode(renderer) == RendererDrawMode_Texture) {
+  if (flag & LightCreateFlag_Shadow) {
 
-    SpotLightListShadow *shadow_list = &scene->lights.spot.shadow;
-    renderer_draw_shadow_map_spot_light(
-        &(ShadowMapDrawSpotLightDescriptor){
-            .light = light,
-            .pass = &shadow_list->pass,
-            .texture_layer = shadow_list->count,
-            .command_encoder = NULL,
-            .profiler = &renderer->profiler,
-        },
-        SCENE_DEBUG_UNDEFINED);
+    ShadowMap *sm = &renderer->shadow_map;
+    shadow_map_register_spot_light(sm, light);
+
+    if (renderer_draw_mode(renderer) == RendererDrawMode_Texture) {
+      ShadowMapLight *light_group = &sm->lights[ShadowMapLightType_Directional];
+      const size_t index = light_group->caster.directional.spot.count - 1;
+      shadow_map_draw_spot_light(sm, index, NULL);
+    }
   }
 
   engine_scene_add_sem(engine, sem_list);
@@ -176,22 +164,16 @@ SceneEditorMeshList *engine_scene_add_sun_light(Engine *engine,
     *dest = light;
 
   // recompute shadow map if render mode
-  if ((flag & LightCreateFlag_Shadow) &&
-      renderer_draw_mode(renderer) == RendererDrawMode_Texture) {
+  if (flag & LightCreateFlag_Shadow) {
 
-    SunLightListShadow *shadow_list = &scene->lights.sun.shadow;
-    const size_t target_index =
-        light_list_sun_layer_index(&scene->lights, shadow_list->count);
+    ShadowMap *sm = &renderer->shadow_map;
+    shadow_map_register_sun_light(sm, light);
 
-    renderer_draw_shadow_map_sun_light(
-        &(ShadowMapDrawSunLightDescriptor){
-            .light = light,
-            .pass = &scene->lights.spot.shadow.pass,
-            .texture_layer = target_index,
-            .command_encoder = NULL,
-            .profiler = &renderer->profiler,
-        },
-        SCENE_DEBUG_UNDEFINED);
+    if (renderer_draw_mode(renderer) == RendererDrawMode_Texture) {
+      ShadowMapLight *light_group = &sm->lights[ShadowMapLightType_Directional];
+      const size_t index = light_group->caster.directional.sun.count - 1;
+      shadow_map_draw_sun_light(sm, index, NULL);
+    }
   }
 
   engine_scene_add_sem(engine, sem_list);

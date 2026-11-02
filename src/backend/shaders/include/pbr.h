@@ -30,6 +30,7 @@ typedef struct {
   float _pad[3];
 } PBRMaterialUniform;
 
+
 static const WGPUBindGroupLayoutDescriptor pbr_material_bind_group = {
     .label = "Group 1 (PBR Material)",
     .entryCount = 7,
@@ -106,6 +107,13 @@ static const WGPUBindGroupLayoutDescriptor pbr_material_bind_group = {
         },
 };
 
+
+#ifdef RENDER_SHADOW_AS_COLOR
+#define PBR_LIGHTING_ENTRY_COUNT 8
+#else
+#define PBR_LIGHTING_ENTRY_COUNT 9
+#endif
+
 static const WGPUBindGroupLayoutDescriptor pbr_lighting_bind_group = {
     .label = "Group 2 (Environment + Lights + Probes)",
     .entryCount = 9,
@@ -173,7 +181,7 @@ static const WGPUBindGroupLayoutDescriptor pbr_lighting_bind_group = {
                         .multisampled = false,
                     },
             },
-#ifndef RENDER_SHADOW_AS_COLOR
+//#ifndef RENDER_SHADOW_AS_COLOR
             {
                 .binding = 5, // shadow_sampler
                 .visibility = WGPUShaderStage_Fragment,
@@ -182,7 +190,7 @@ static const WGPUBindGroupLayoutDescriptor pbr_lighting_bind_group = {
                         .type = WGPUSamplerBindingType_Comparison,
                     },
             },
-#endif
+//#endif
             {
                 .binding = 6, // probe_reflection_plane_texture
                 .visibility = WGPUShaderStage_Fragment,

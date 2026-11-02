@@ -25,6 +25,71 @@ ResourceManager g_rem = {0};
 static inline Pool *rem_pool(const REMType type) { return &g_rem.pools[type]; }
 
 /*
+   WGPU tracking: every live raw WGPU object gets a slot in the pool of its
+   type. The public API still hands out the raw handle.
+     - most types: the slot holds just the handle
+     - views:      the slot holds a REMViewRecord
+   The handle is always the first thing in the slot, so find/untrack work
+   the same for every type.
+ */
+
+// Allocate a zeroed tracking slot, NULL if out of memory.
+static void *rem_track_slot(const REMType type) {
+
+  Pool *pool = rem_pool(type);
+
+  uint32_t gen;
+  const uint32_t index = pool_alloc(pool, &gen);
+
+  if (index == POOL_INVALID) {
+    logger_add(LoggerFlag_Error,
+               "- %s: out of memory while tracking object (live: %u).",
+               rem_config[type].label, pool_live_count(pool));
+    return NULL;
+  }
+
+  return pool_slot_ptr(pool, index);
+}
+
+// The handle stored at the start of a tracking slot.
+static inline void *rem_slot_handle(const void *slot) {
+  void *handle;
+  memcpy(&handle, slot, sizeof handle);
+  return handle;
+}
+
+// Linear search by handle. Returns the slot index (and its generation) or
+// POOL_INVALID.
+static uint32_t rem_wgpu_find(const REMType type, const void *handle,
+                              uint32_t *out_gen) {
+
+  const Pool *pool = rem_pool(type);
+
+  uint32_t gen;
+  POOL_FOREACH_ALIVE(pool, i, gen) {
+    if (rem_slot_handle(pool_slot_ptr(pool, i)) == handle) {
+      *out_gen = gen;
+      return i;
+    }
+  }
+
+  return POOL_INVALID;
+}
+
+// Remove the tracking slot of a WGPU object. Returns 0 if it wasn't tracked.
+static int rem_untrack(const REMType type, const void *handle) {
+
+  uint32_t gen;
+  const uint32_t index = rem_wgpu_find(type, handle, &gen);
+
+  if (index == POOL_INVALID)
+    return 0;
+
+  pool_free(rem_pool(type), index, gen);
+  return 1;
+}
+
+/*
    Engine destroy thunks: one per engine type, so shutdown can destroy
    leftover objects through a table indexed by REMType without casting
    function pointers.
@@ -52,11 +117,16 @@ REMStatus resource_manager_init() {
 
   memset(&g_rem, 0, sizeof g_rem);
 
-  // === init per engine type pools ===
-  for (REMType i = REM_WGPU_ITEM_COUNT; i < REMType_Count; i++) {
+  // === init one pool per type (WGPU tracking pools + engine pools) ===
+  for (REMType i = 0; i < REMType_Count; i++) {
 
     const size_t capacity = rem_config[i].capacity;
-    const size_t type_size = rem_config[i].type_size;
+
+    // WGPU pools store the handle itself (sizeof(Type)), except views which
+    // store a REMViewRecord
+    const size_t type_size = (i == REMType_WGPUTextureView)
+                                 ? sizeof(REMViewRecord)
+                                 : rem_config[i].type_size;
 
     // chunk sized to the initial capacity, capped, so singletons stay small
     const uint32_t chunk_slots =
@@ -117,17 +187,23 @@ void resource_manager_shutdown(void) {
     pool_shutdown(pool);
   }
 
+  // WGPU pools are shut down last: engine destructors above may still
+  // release WGPU objects through rem_destroy_*.
   for (int t = 0; t < REM_WGPU_ITEM_COUNT; t++) {
-    if (g_rem.wgpu_live[t] > 0) {
+
+    Pool *pool = rem_pool((REMType)t);
+    const uint32_t live = pool_live_count(pool);
+
+    if (live > 0) {
       logger_add(LoggerFlag_Error, "- %s: %u object(s) leaked at shutdown",
-                 rem_config[t].label, g_rem.wgpu_live[t]);
+                 rem_config[t].label, live);
     }
+
+    pool_shutdown(pool);
   }
 }
 
 uint32_t rem_live_count(const REMType type) {
-  if (type < REM_WGPU_ITEM_COUNT)
-    return g_rem.wgpu_live[type];
   if (type >= REMType_Count)
     return 0;
   return pool_live_count(rem_pool(type));
@@ -140,14 +216,17 @@ uint32_t rem_live_count(const REMType type) {
    ▐▌ ▐▌▐▌▝▜▌▐▛▀▘ ▐▌ ▐▌
    ▐▙█▟▌▝▚▄▞▘▐▌   ▝▚▄▞▘
 
-   Raw opaque pointers: created by wgpu, returned as-is, only counted.
+   Raw opaque pointers: created by wgpu, returned as-is, tracked in a pool.
  */
 
 #define REM_NEW_WGPU_ITEM(Name, FuncName, TypeEnum, DescType, Creator)         \
   Name rem_new_##FuncName(const DescType *desc) {                              \
     Name item = Creator(context_device(), desc);                               \
-    if (item != NULL)                                                          \
-      g_rem.wgpu_live[TypeEnum]++;                                             \
+    if (item != NULL) {                                                        \
+      Name *slot = (Name *)rem_track_slot(TypeEnum);                           \
+      if (slot)                                                                \
+        *slot = item;                                                          \
+    }                                                                          \
     return item;                                                               \
   }
 
@@ -165,8 +244,43 @@ WGPUTextureView rem_new_view(const WGPUTexture texture,
 
   WGPUTextureView view = wgpuTextureCreateView(texture, desc);
 
-  if (view != NULL)
-    g_rem.wgpu_live[REMType_WGPUTextureView]++;
+  if (view == NULL)
+    return view;
+
+  REMViewRecord *rec =
+      (REMViewRecord *)rem_track_slot(REMType_WGPUTextureView);
+
+  if (rec) {
+    const uint32_t base_mip = desc ? desc->baseMipLevel : 0;
+    const uint32_t base_layer = desc ? desc->baseArrayLayer : 0;
+
+    WGPUTextureViewDimension dim =
+        desc ? desc->dimension : WGPUTextureViewDimension_Undefined;
+
+    // resolve "Undefined" the same way WebGPU does
+    if (dim == WGPUTextureViewDimension_Undefined) {
+      const WGPUTextureDimension tdim = wgpuTextureGetDimension(texture);
+      if (tdim == WGPUTextureDimension_1D) {
+        dim = WGPUTextureViewDimension_1D;
+      } else if (tdim == WGPUTextureDimension_3D) {
+        dim = WGPUTextureViewDimension_3D;
+      } else {
+        const uint32_t layers =
+            (desc && desc->arrayLayerCount != 0 &&
+             desc->arrayLayerCount != WGPU_ARRAY_LAYER_COUNT_UNDEFINED)
+                ? desc->arrayLayerCount
+                : wgpuTextureGetDepthOrArrayLayers(texture) - base_layer;
+        dim = layers > 1 ? WGPUTextureViewDimension_2DArray
+                         : WGPUTextureViewDimension_2D;
+      }
+    }
+
+    rec->handle = view;
+    rec->texture = texture;
+    rec->dimension = dim;
+    rec->base_mip = base_mip;
+    rec->base_layer = base_layer;
+  }
 
   return view;
 }
@@ -200,8 +314,12 @@ WGPUShaderModule rem_new_shader_module(char *code, const char *label,
     code = NULL;
   }
 
-  if (shader != NULL)
-    g_rem.wgpu_live[REMType_WGPUShaderModule]++;
+  if (shader != NULL) {
+    WGPUShaderModule *slot =
+        (WGPUShaderModule *)rem_track_slot(REMType_WGPUShaderModule);
+    if (slot)
+      *slot = shader;
+  }
 
   return shader;
 }
@@ -270,17 +388,19 @@ REMStatus rem_write_buffer(WGPUBuffer buffer, const size_t offset, void *data,
   return REMStatus_Success;
 }
 
-// Release a raw WGPU object, decrement its counter, NULL the caller's handle.
+// Untrack + release a raw WGPU object and NULL the caller's handle.
+// An object that isn't tracked is rejected WITHOUT being released (catches
+// double destroys and objects that were not created through rem_new_*).
 #define REM_DESTROY_WGPU_ITEM(FuncName, HandleType, TypeEnum, Releaser)        \
   REMStatus rem_destroy_##FuncName(HandleType *handle) {                       \
                                                                                \
     if (handle == NULL || *handle == NULL)                                     \
       return REMStatus_NullResource;                                           \
                                                                                \
-    Releaser(*handle);                                                         \
+    if (!rem_untrack(TypeEnum, *handle))                                       \
+      return REMStatus_UnfoundResource;                                        \
                                                                                \
-    if (g_rem.wgpu_live[TypeEnum] > 0)                                         \
-      g_rem.wgpu_live[TypeEnum]--;                                             \
+    Releaser(*handle);                                                         \
                                                                                \
     *handle = NULL;                                                            \
     return REMStatus_Success;                                                  \
@@ -307,13 +427,63 @@ REMStatus rem_destroy_view(WGPUTextureView *handle) {
   if (is_std_texture_view(*handle))
     return REMStatus_ProtectedResource;
 
-  wgpuTextureViewRelease(*handle);
+  if (!rem_untrack(REMType_WGPUTextureView, *handle))
+    return REMStatus_UnfoundResource;
 
-  if (g_rem.wgpu_live[REMType_WGPUTextureView] > 0)
-    g_rem.wgpu_live[REMType_WGPUTextureView]--;
+  wgpuTextureViewRelease(*handle);
 
   *handle = NULL;
   return REMStatus_Success;
+}
+
+/*
+   Enumeration of live WGPU objects.
+
+   void rem_get_all_<label>(Type *entries, size_t *count)
+     entries == NULL : *count = live objects
+     entries != NULL : copies up to *count handles, *count = written
+ */
+#define _(Type, RegistryType, Label, Capacity)                                 \
+  void rem_get_all_##Label(Type *entries, size_t *count) {                     \
+                                                                               \
+    if (count == NULL)                                                         \
+      return;                                                                  \
+                                                                               \
+    const Pool *pool = rem_pool(REMType_##Type);                               \
+    const size_t cap = entries ? *count : 0;                                   \
+    size_t n = 0;                                                              \
+                                                                               \
+    uint32_t gen;                                                              \
+    POOL_FOREACH_ALIVE(pool, i, gen) {                                         \
+      if (entries) {                                                           \
+        if (n >= cap)                                                          \
+          break;                                                               \
+        entries[n] = *(const Type *)pool_slot_ptr(pool, i);                                             \
+      }                                                                        \
+      n++;                                                                     \
+    }                                                                          \
+                                                                               \
+    *count = n;                                                                \
+  }
+
+REM_WGPU_LIST(_)
+#undef _
+
+const REMViewRecord *rem_get_view_record(WGPUTextureView view) {
+
+  uint32_t gen;
+  const uint32_t index = rem_wgpu_find(REMType_WGPUTextureView, view, &gen);
+
+  if (index == POOL_INVALID)
+    return NULL;
+
+  return (const REMViewRecord *)pool_slot_ptr(
+      rem_pool(REMType_WGPUTextureView), index);
+}
+
+WGPUTexture rem_get_view_texture(WGPUTextureView view) {
+  const REMViewRecord *rec = rem_get_view_record(view);
+  return rec ? rec->texture : NULL;
 }
 
 /*
@@ -366,6 +536,35 @@ REM_ENGINE_LIST(_)
                                                                                \
     return pool_free(pool, index, gen) ? REMStatus_Success                     \
                                        : REMStatus_AllocFail;                  \
+  }
+
+REM_ENGINE_LIST(_)
+#undef _
+
+// === ENUMERATE ENGINE ITEMS ===
+// void rem_get_all_<label>(Type **entries, size_t *count): same semantics as
+// the WGPU getters, entries are pool-stable pointers.
+#define _(Type, RegistryType, Label, Capacity)                                 \
+  void rem_get_all_##Label(Type **entries, size_t *count) {                    \
+                                                                               \
+    if (count == NULL)                                                         \
+      return;                                                                  \
+                                                                               \
+    const Pool *pool = rem_pool(REMType_##Type);                               \
+    const size_t cap = entries ? *count : 0;                                   \
+    size_t n = 0;                                                              \
+                                                                               \
+    uint32_t gen;                                                              \
+    POOL_FOREACH_ALIVE(pool, i, gen) {                                         \
+      if (entries) {                                                           \
+        if (n >= cap)                                                          \
+          break;                                                               \
+        entries[n] = (Type *)pool_slot_ptr(pool, i);                           \
+      }                                                                        \
+      n++;                                                                     \
+    }                                                                          \
+                                                                               \
+    *count = n;                                                                \
   }
 
 REM_ENGINE_LIST(_)

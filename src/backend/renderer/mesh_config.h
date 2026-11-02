@@ -57,10 +57,9 @@ typedef enum {
 #define RENDERER_FLAG_COUNT 8
 
 typedef enum {
-  RendererLayer_Default = 1 << 0,
-  RendererLayer_Outline = 1 << 1,
-  RendererLayer_Gizmo = 1 << 2,
-  RendererLayer_All = ~0,
+  RendererLayer_Default,
+  RendererLayer_Outline,
+  RendererLayer_Gizmo,
 } RendererLayer;
 #define RENDERER_LAYER_COUNT 3
 

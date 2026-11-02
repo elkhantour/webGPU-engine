@@ -47,7 +47,6 @@ typedef enum {
 
 // descriptors
 typedef struct {
-  const char *path;
   const char *name;
   RenderPipeline *const *pipeline;
 } ShaderCreateDescriptor;
@@ -254,15 +253,9 @@ typedef struct {
     uint32_t entries[SHADER_MAX_OFFSET_CAPACITY];
   } offset;
 
-  ShaderBindGroupUniforms uniforms;                  // uniforms
-  ShaderBindGroupUniformsDynamics uniforms_dynamics; // dynamic pointers
-
-  ShaderBindGroupTextures textures;                  // textures
-  ShaderBindGroupTexturesDynamics textures_dynamics; // dynamic pointers
-
-  ShaderBindGroupSamplers samplers;                  // sampler
-  ShaderBindGroupSamplersDynamics samplers_dynamics; // sampler
-
+  ShaderBindGroupUniforms uniforms;
+  ShaderBindGroupTextures textures;
+  ShaderBindGroupSamplers samplers;
 } ShaderBindGroup;
 
 typedef struct {
@@ -300,26 +293,19 @@ typedef struct {
   WGPUShaderStageFlags visibility;
 } ShaderCreateSamplerDescriptor;
 
-// core
+
 typedef struct {
   name_t name;
   reg_id_t id;
-  // pipelines
   RenderPipeline *const *pipeline;
-
   ShaderBindGroupList bind_groups;
-
 } Shader;
 
 EXTERN_C_BEGIN
 
-// methods
 void shader_create(Shader *, const ShaderCreateDescriptor *);
 void shader_destroy(Shader *);
 void shader_build(Shader *);
-
-// on update
-void shader_uniform_update(ShaderBindGroup *);
 
 const RenderPipeline *shader_pipeline(Shader *);
 void shader_pipeline_release_layout(Shader *);

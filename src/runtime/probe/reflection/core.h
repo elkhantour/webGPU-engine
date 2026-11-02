@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "backend/renderer/render_pass/core.h"
+#include "backend/render_pass/core.h"
 #include "runtime/scene/debug/core.h"
 #include "utils/dyli.h"
 #include "webgpu/webgpu.h"

@@ -12,7 +12,7 @@ void example_light(Engine *engine) {
                                    .far = 20.0f,
                                    .position = {0.0f, 3.5f, 0.0f},
                                },
-                               LightCreateFlag_None, NULL);
+                               LightCreateFlag_Shadow, NULL);
 
   engine_scene_add_sun_light(engine,
                              &(SunLightDescriptor){

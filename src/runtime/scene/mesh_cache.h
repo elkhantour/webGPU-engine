@@ -2,6 +2,7 @@
 #define _SCENE_MESH_CACHE_H_
 
 #include "backend/renderer/mesh_config.h"
+#include "backend/shaders/core.h"
 #include "utils/defines.h"
 
 #include "runtime/mesh/core.h"
@@ -22,7 +23,7 @@ typedef enum {
 // #define (not static const) so they are valid array sizes in C as well as C++
 #define SCENE_MESH_CACHE_FLAG_COUNT RENDERER_FLAG_COUNT
 #define SCENE_MESH_CACHE_LAYER_COUNT RENDERER_LAYER_COUNT
-#define SCENE_MESH_CACHE_PIPELINE_COUNT RENDER_PIPELINE_TYPE_COUNT
+#define SCENE_MESH_CACHE_PIPELINE_COUNT RenderPipelineType_COUNT
 
 typedef struct {
   size_t default_capacity;
@@ -41,8 +42,8 @@ EXTERN_C_BEGIN
 
 // `source` must outlive the cache and keep a stable address.
 SceneMeshCacheStatus scene_mesh_cache_init(SceneMeshCache *,
-                                                 const MeshRefList *source,
-                                                 const size_t capacity);
+                                           const MeshRefList *source,
+                                           const size_t capacity);
 
 SceneMeshCacheStatus scene_mesh_cache_destroy(SceneMeshCache *);
 
@@ -50,8 +51,8 @@ SceneMeshCacheStatus scene_mesh_cache_destroy(SceneMeshCache *);
 SceneMeshCacheStatus scene_mesh_cache_clear(SceneMeshCache *);
 
 // Point the cache to another source (e.g. scene switch). Clears all caches.
-SceneMeshCacheStatus
-scene_mesh_cache_set_source(SceneMeshCache *, const MeshRefList *source);
+SceneMeshCacheStatus scene_mesh_cache_set_source(SceneMeshCache *,
+                                                 const MeshRefList *source);
 
 const MeshRefList *scene_mesh_cache_source(const SceneMeshCache *);
 
@@ -62,16 +63,16 @@ const MeshRefList *scene_mesh_cache_source(const SceneMeshCache *);
 // Builds the cache from the source if it doesn't exist yet.
 // *result is read-only and valid until the next refresh/clear/destroy.
 SceneMeshCacheStatus scene_mesh_cache_get(SceneMeshCache *,
-                                                const SceneMeshCacheType,
-                                                const size_t key,
-                                                const MeshRefList **result);
+                                          const SceneMeshCacheType,
+                                          const size_t key,
+                                          const MeshRefList **result);
 
 // Refresh
 
 // Update one cache against the source (builds it if missing).
 SceneMeshCacheStatus scene_mesh_cache_refresh(SceneMeshCache *,
-                                                    const SceneMeshCacheType,
-                                                    const size_t key);
+                                              const SceneMeshCacheType,
+                                              const size_t key);
 
 // Update every cache that currently exists. Caches never queried are skipped.
 SceneMeshCacheStatus scene_mesh_cache_refresh_all(SceneMeshCache *);

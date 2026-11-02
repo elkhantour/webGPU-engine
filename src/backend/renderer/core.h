@@ -6,16 +6,15 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#include "./render_pass/render_pass.h"
+#include "backend/render_pass/render_pass.h"
 #include "backend/ao_bake/core.h"
 #include "backend/clock.h"
 #include "backend/compute/core.h"
 #include "backend/profiler.h"
 #include "backend/registry.h"
 #include "backend/renderer/mesh_config.h"
-#include "backend/stat.h"
 #include "backend/shaders/core.h"
-#include "render_pass/core.h"
+#include "backend/stat.h"
 #include "runtime/mesh/core.h"
 #include "runtime/pipeline/pipeline.h"
 #include "runtime/pipeline/render.h"
@@ -24,6 +23,7 @@
 #include "runtime/texture/texture.h"
 #include "utils/hsht.h"
 #include "webgpu/webgpu.h"
+#include "backend/shadow_map/core.h"
 
 #define RENDERER_MAX_HOOK 6
 #define RENDERER_DPI_AUTO 0
@@ -99,7 +99,6 @@ typedef struct {
   const int height;
 } RendererCreateDescriptor;
 
-
 typedef void (*renderer_draw_callback)(void *);
 
 typedef struct {
@@ -127,17 +126,16 @@ struct Renderer {
     RendererTextureAO ambient_occlusion;
   } texture; // TODO Make a TextureManager
 
+  ShadowMap shadow_map;
   RendererDrawMode draw_mode;
-    
+
   RendererDrawCallbackList callbacks[RENDERER_DRAW_MODE_COUNT];
 
   RenderPassList mesh_pass[RENDERER_DRAW_MODE_COUNT];
   RenderPassList plane_reflection_pass;
   RenderPassList probe_reflection_pass;
-  RenderPassList shadow_map_pass;
 
   ComputePass compute_pass;
-
 };
 
 EXTERN_C_BEGIN
@@ -185,7 +183,6 @@ static inline const RenderPipelineMultisampleCount
 renderer_multisample(Renderer *rd) {
   return rd->multisample;
 }
-
 
 // mutators
 

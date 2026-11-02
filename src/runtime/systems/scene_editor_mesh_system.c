@@ -1,5 +1,6 @@
 #include "scene_editor_mesh_system.h"
-#include "backend/renderer/shadow_map/draw.h"
+#include "backend/shadow_map/core.h"
+#include "backend/shadow_map/draw.h"
 #include "runtime/light/list.h"
 #include "runtime/light/uniform.h"
 #include "runtime/probe/core.h"
@@ -98,6 +99,7 @@ void sem_system_point_light_update_shadow(const SEMTransform *desc) {
 
   PointLight *light = (PointLight *)desc->sem->target;
   UBOManager *ubo = desc->ubo;
+  Renderer *renderer = desc->renderer;
 
   if (renderer_draw_mode(desc->renderer) == RendererDrawMode_Texture) {
 
@@ -109,15 +111,10 @@ void sem_system_point_light_update_shadow(const SEMTransform *desc) {
       ubo_update_queue_insert(ubo, UBOType_ViewProjection,
                               light->ubo_projection[i].id);
 
-    renderer_draw_shadow_map_point_light(
-        &(ShadowMapDrawPointLightDescriptor){
-            .light = light,
-            .pass = &desc->light_list->point.shadow.pass,
-            .texture_layer = desc->sem->target_list_index,
-            .command_encoder = NULL,
-            .profiler = &desc->renderer->profiler,
-        },
-        SCENE_DEBUG_UNDEFINED);
+    ShadowMap *sm = &renderer->shadow_map;
+    const size_t caster_index = shadow_map_point_light_index(sm, light);
+
+    shadow_map_draw_point_light(&renderer->shadow_map, caster_index, NULL);
   }
 }
 
@@ -125,6 +122,7 @@ void sem_system_spot_light_update_shadow(const SEMTransform *desc) {
 
   SpotLight *light = (SpotLight *)desc->sem->target;
   UBOManager *ubo = desc->ubo;
+  Renderer *renderer = desc->renderer;
 
   if (renderer_draw_mode(desc->renderer) == RendererDrawMode_Texture) {
 
@@ -133,15 +131,10 @@ void sem_system_spot_light_update_shadow(const SEMTransform *desc) {
     ubo_update_queue_insert(ubo, UBOType_ViewProjection,
                             light->ubo_projection.id);
 
-    renderer_draw_shadow_map_spot_light(
-        &(ShadowMapDrawSpotLightDescriptor){
-            .light = light,
-            .pass = &desc->light_list->spot.shadow.pass,
-            .texture_layer = desc->sem->target_list_index,
-            .command_encoder = NULL,
-            .profiler = &desc->renderer->profiler,
-        },
-        SCENE_DEBUG_UNDEFINED);
+    ShadowMap *sm = &renderer->shadow_map;
+    const size_t caster_index = shadow_map_spot_light_index(sm, light);
+
+    shadow_map_draw_spot_light(&renderer->shadow_map, caster_index, NULL);
   }
 }
 
@@ -149,6 +142,7 @@ void sem_system_sun_light_update_shadow(const SEMTransform *desc) {
 
   SunLight *light = (SunLight *)desc->sem->target;
   UBOManager *ubo = desc->ubo;
+  Renderer *renderer = desc->renderer;
 
   if (renderer_draw_mode(desc->renderer) == RendererDrawMode_Texture) {
 
@@ -157,16 +151,10 @@ void sem_system_sun_light_update_shadow(const SEMTransform *desc) {
     ubo_update_queue_insert(ubo, UBOType_ViewProjection,
                             light->ubo_projection.id);
 
-    renderer_draw_shadow_map_sun_light(
-        &(ShadowMapDrawSunLightDescriptor){
-            .light = light,
-            .pass = &desc->light_list->spot.shadow.pass,
-            .texture_layer = desc->light_list->spot.shadow.count +
-                             desc->sem->target_list_index,
-            .command_encoder = NULL,
-            .profiler = &desc->renderer->profiler,
-        },
-        SCENE_DEBUG_UNDEFINED);
+    ShadowMap *sm = &renderer->shadow_map;
+    const size_t caster_index = shadow_map_sun_light_index(sm, light);
+
+    shadow_map_draw_sun_light(&renderer->shadow_map, caster_index, NULL);
   }
 }
 
@@ -372,24 +360,20 @@ void sem_system_probe_reflection_plane_update_mesh_uniform(
 
   for (uint8_t i = 0; i < reflection_meshes.count; i++) {
 
-    const MeshRefList *pipeline = reflection_meshes.entries[i];
+    Mesh *mesh = reflection_meshes.entries[i];
 
-    for (size_t j = 0; j < pipeline->count; j++) {
+    MeshUniform *uniform = mesh_uniform(mesh);
+    bool intersect =
+        aabb_intersect(&probe->boundbox, &mesh->topology.boundbox.world);
 
-      Mesh *pipeline_mesh = pipeline->entries[j];
-      MeshUniform *uniform = mesh_uniform(pipeline_mesh);
-      bool intersect = aabb_intersect(&probe->boundbox,
-                                      &pipeline_mesh->topology.boundbox.world);
-
-      if (intersect) {
-        mesh_uniform_set_probe_reflection_plane(pipeline_mesh, ubo);
-        // FIXME mesh_route_system_hide_mesh(desc->, desc->renderer,
-        // pipeline_mesh);
-      } else {
-        mesh_uniform_clear_probe_reflection_plane(pipeline_mesh, ubo);
-        // FIXME render_pass_enable_mesh(&probes->reflection_plane.pass,
-        // pipeline_mesh);
-      }
+    if (intersect) {
+      mesh_uniform_set_probe_reflection_plane(mesh, ubo);
+      // FIXME mesh_route_system_hide_mesh(desc->, desc->renderer,
+      // pipeline_mesh);
+    } else {
+      mesh_uniform_clear_probe_reflection_plane(mesh, ubo);
+      // FIXME render_pass_enable_mesh(&probes->reflection_plane.pass,
+      // pipeline_mesh);
     }
   }
 }

@@ -8,7 +8,7 @@
 
 #include "./core.h"
 #include "backend/registry.h"
-#include "backend/renderer/render_pass/core.h"
+#include "backend/render_pass/core.h"
 #include "runtime/geometry/aabb/aabb.h"
 #include "runtime/probe/reflection/probe.h"
 #include "utils/dyli.h"

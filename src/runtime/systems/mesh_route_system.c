@@ -1,6 +1,8 @@
 #include "mesh_route_system.h"
 #include "backend/renderer/core.h"
-#include "backend/renderer/render_pass/core.h"
+#include "backend/renderer/mesh_config.h"
+#include "backend/render_pass/core.h"
+#include "backend/shadow_map/core.h"
 #include "backend/shaders/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/draw.h"
@@ -27,7 +29,7 @@
 
 static void enable_in_light_reflection(Scene *scene, Renderer *renderer,
                                        Mesh *mesh) {
-  // FIX ME
+  // FIXME
   // render_pass_enable_mesh(&scene->probes.reflection_probe.pass, mesh);
   // render_pass_enable_mesh(&scene->probes.reflection_plane.pass, mesh);
   // render_pass_enable_mesh(&scene->lights.point.shadow.pass, mesh);
@@ -36,7 +38,7 @@ static void enable_in_light_reflection(Scene *scene, Renderer *renderer,
 
 static void disable_in_light_reflection(Scene *scene, Renderer *renderer,
                                         Mesh *mesh) {
-  // FIX ME
+  // FIXME
   // render_pass_disable_mesh(&scene->probes.reflection_probe.pass, mesh);
   // render_pass_disable_mesh(&scene->probes.reflection_plane.pass, mesh);
   // render_pass_disable_mesh(&scene->lights.point.shadow.pass, mesh);
@@ -53,31 +55,25 @@ static void disable_in_light_reflection(Scene *scene, Renderer *renderer,
  */
 static void route_mesh(Renderer *renderer, Mesh *mesh, const bool remove_all) {
 
+  // Default pipelines
   for (size_t mode = 0; mode < RENDERER_DRAW_MODE_COUNT; mode++) {
 
-    RenderPassList *pass_list =
-        renderer_mesh_pass_list(renderer, (RendererDrawMode)(1 << mode));
+    const RendererDrawMode draw_mode = (RendererDrawMode)(1 << mode);
+    RenderPassList *pass_list = renderer_mesh_pass_list(renderer, draw_mode);
 
     for (size_t layer = 0; layer < pass_list->count; layer++) {
-      RenderPass *pass = &pass_list->passes[layer];
+      RenderPass *pass = &pass_list->layers[layer];
 
       for (size_t k = 0; k < pass->layouts.count; k++) {
         RenderPassLayout *layout = &pass->layouts.entries[k];
-
-        const bool wanted =
-            !remove_all && render_pass_layout_accepts(mesh, layout, mode, layer);
-
-        size_t index;
-        const MeshDrawPacket *present = mesh_draw_packet_list_find_mesh(
-            &layout->drawn_meshes, mesh, &index);
-
-        if (wanted && !present)
-          render_pass_layout_add_mesh(layout, mesh);
-        else if (!wanted && present)
-          mesh_draw_packet_list_remove_at_index(&layout->drawn_meshes, index);
+        bool toggled = render_pass_layout_toggle_mesh(layout, mesh, draw_mode,
+                                                      layer, remove_all);
       }
     }
   }
+
+  // Shadow Map / Reflection that use their own render pass
+  shadow_map_toggle_mesh(&renderer->shadow_map, mesh, remove_all);
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +148,7 @@ void mesh_route_system_refresh_mesh(Renderer *renderer, Mesh *mesh) {
 
     for (size_t layer = 0; layer < pass_list->count; layer++) {
 
-      RenderPass *pass = &pass_list->passes[layer];
+      RenderPass *pass = &pass_list->layers[layer];
 
       for (size_t k = 0; k < pass->layouts.count; k++) {
         RenderPassLayout *layout = &pass->layouts.entries[k];

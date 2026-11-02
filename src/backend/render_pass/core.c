@@ -6,6 +6,7 @@
 
 #include "backend/logger.h"
 #include "backend/postfx/core.h"
+#include "backend/renderer/mesh_config.h"
 #include "backend/shaders/core.h"
 #include "draw.h"
 #include "runtime/mesh/core.h"
@@ -46,6 +47,10 @@ void render_pass_create(RenderPass *pass,
 
   if (desc->draw_list)
     render_pass_draw_list_copy(desc->draw_list, &pass->layouts);
+}
+
+void render_pass_destroy(RenderPass *pass) {
+  // TODO
 }
 
 void render_pass_init_color(RenderPass *pass,
@@ -97,7 +102,7 @@ render_pass_list_insert_pass(RenderPassList *list,
     return NULL;
   }
 
-  RenderPass *new_pass = &list->passes[list->count++];
+  RenderPass *new_pass = &list->layers[list->count++];
   render_pass_create(new_pass, desc);
   render_pass_list_update_child_passes_callback(list);
   return new_pass;
@@ -111,11 +116,11 @@ void render_pass_list_update_child_passes_callback(RenderPassList *list) {
 
   // reset previous pass callback to default
   for (size_t i = 0; i < list->count; i++)
-    list->passes[i].draw_callback = render_pass_im_draw;
+    list->layers[i].draw_callback = render_pass_im_draw;
 
   // set last pass resolve
   {
-    RenderPass *last_pass = &list->passes[list->count - 1];
+    RenderPass *last_pass = &list->layers[list->count - 1];
 
     if (PipelineMultisampleCount_1x == last_pass->multisample)
       last_pass->draw_callback = render_pass_draw_callback_resolve_monosample;
@@ -175,8 +180,6 @@ void render_pass_draw_list_copy(const RenderPassLayoutListDescriptor *src,
     d->shader = s->shader;
     d->pipeline = s->pipeline;
     d->topology_callback = s->topology_callback;
-    d->mesh_preprocessor_callback = s->mesh_preprocessor_callback;
-    d->mesh_preprocessor_data = s->mesh_preprocessor_data;
 
     //// DELETEME (useful debug)
     // printf("[%lu] pipeline: %s | shader: %d | mesh list: %p \n", i,
@@ -185,32 +188,6 @@ void render_pass_draw_list_copy(const RenderPassLayoutListDescriptor *src,
 
     mesh_draw_packet_list_create(&d->drawn_meshes, MESH_REF_LIST_CAPACITY);
   }
-}
-
-RenderPassStatus render_pass_update_preprocessor_data(RenderPass *pass,
-                                                      uint8_t index,
-                                                      void *data) {
-  if (index > pass->layouts.count) {
-    logger_add(LoggerFlag_Warning,
-               "Trying to update an out of bound (%d) render pass "
-               "preprocessor data. Target render pass has %lu draw lists.",
-               index, pass->layouts.count);
-    return RenderPassStatus_OutOfBoundDrawIndex;
-  }
-
-  pass->layouts.entries[index].mesh_preprocessor_data = data;
-
-  return RenderPassStatus_Success;
-}
-
-RenderPassStatus render_pass_update_all_preprocessor_data(RenderPass *pass,
-                                                          void *data) {
-
-  for (size_t i = 0; i < pass->layouts.count; i++)
-    if (pass->layouts.entries[i].mesh_preprocessor_callback)
-      pass->layouts.entries[i].mesh_preprocessor_data = data;
-
-  return RenderPassStatus_Success;
 }
 
 StaticListStatus render_pass_view_color_insert(RenderPass *pass,
@@ -276,36 +253,51 @@ void render_pass_sync_drawn_layouts(RenderPass *pass) {
    Should `mesh` be drawn by `layout`, which lives in the pass for `layer`
    (pass index == layer bit) of draw mode `mode` (index)?
  */
-bool render_pass_layout_accepts(Mesh *mesh, const RenderPassLayout *layout,
-                                const size_t mode, const size_t layer) {
+RenderPassLayoutAcceptStatus
+render_pass_layout_accepts(Mesh *mesh, const RenderPassLayout *layout,
+                           const RendererDrawMode mode, const size_t layer) {
 
   const RendererMeshConfig *cfg = &mesh->render_config;
 
   // 1. flags predominate: a Hidden mesh is accepted nowhere
   if (cfg->flags & RendererMeshFlag_Hidden)
-    return false;
+    return RenderPassLayoutAcceptStatus_Hidden;
 
-  // 2. draw mode
-  if (!(cfg->draw_mode & (1u << mode)))
-    return false;
+  // 2. if mesh draw mode match arg draw mode
+  if (!(cfg->draw_mode & mode))
+    return RenderPassLayoutAcceptStatus_Unmatch_DrawMode;
 
   // the mesh must have the shader this layout draws with
   Shader *shader = mesh_shader(mesh, layout->shader);
   if (!shader)
-    return false;
+    return RenderPassLayoutAcceptStatus_Undefined_Shader;
 
   // 3. outline pass: takes selected meshes, on flags alone (its layouts use
   //    their own pipeline, so the layer and pipeline rules don't apply)
-  if (layer == (size_t)__builtin_ctz(RendererLayer_Outline))
-    return (cfg->flags & RendererMeshFlag_Selection) != 0;
+  if (layer == RendererLayer_Outline)
+    return (cfg->flags & RendererMeshFlag_Selection) != 0
+               ? RenderPassLayoutAcceptStatus_Accepted
+               : RenderPassLayoutAcceptStatus_Outline;
 
   // 4. layer (a mesh on Layer_All goes to every pass)
-  if (cfg->layer != RendererLayer_All && !(cfg->layer & (1u << layer)))
-    return false;
+  if (cfg->layer != layer)
+    return RenderPassLayoutAcceptStatus_Unmatch_Layer;
 
   // 5. pipeline: the one used by the mesh's shader for this layout's shader
-  return std_render_pipeline_type(*shader->pipeline) == layout->pipeline;
+  return std_render_pipeline_type(*shader->pipeline) == layout->pipeline
+             ? RenderPassLayoutAcceptStatus_Accepted
+             : RenderPassLayoutAcceptStatus_Unmatch_Pipeline;
 }
+
+static const char *ACCEPT_LABEL[] = {
+    [RenderPassLayoutAcceptStatus_Accepted] = "ACCEPTED",
+    [RenderPassLayoutAcceptStatus_Hidden] = "Rejected (Hidden)",
+    [RenderPassLayoutAcceptStatus_Unmatch_DrawMode] = "Rejected (Draw Mode)",
+    [RenderPassLayoutAcceptStatus_Unmatch_Layer] = "Rejected (Layer)",
+    [RenderPassLayoutAcceptStatus_Unmatch_Pipeline] = "Rejected (Pipeline)",
+    [RenderPassLayoutAcceptStatus_Undefined_Shader] = "Rejected (Shader)",
+    [RenderPassLayoutAcceptStatus_Outline] = "Rejected (Outline)",
+};
 
 bool render_pass_layout_add_mesh(RenderPassLayout *layout, Mesh *mesh) {
 
@@ -319,4 +311,33 @@ bool render_pass_layout_add_mesh(RenderPassLayout *layout, Mesh *mesh) {
 
   mesh_create_draw_packet(layout->topology_callback(mesh), shader, mesh, pack);
   return true;
+}
+
+bool render_pass_layout_toggle_mesh(RenderPassLayout *layout, Mesh *mesh,
+                                    RendererDrawMode mode, RendererLayer layer,
+                                    bool remove_all) {
+
+  const RenderPassLayoutAcceptStatus accepted =
+      render_pass_layout_accepts(mesh, layout, mode, layer);
+
+  // DEBUG
+  //^uprintf("<%p> \t draw mode: %u \t layer: %u => %s\n", mesh, mode, layer,
+  //       ACCEPT_LABEL[accepted]);
+
+  const bool wanted =
+      !remove_all && accepted == RenderPassLayoutAcceptStatus_Accepted;
+
+  size_t index;
+  const MeshDrawPacket *present =
+      mesh_draw_packet_list_find_mesh(&layout->drawn_meshes, mesh, &index);
+
+  if (wanted && !present) {
+    render_pass_layout_add_mesh(layout, mesh);
+    return true;
+  } else if (!wanted && present) {
+    mesh_draw_packet_list_remove_at_index(&layout->drawn_meshes, index);
+    return false;
+  }
+
+  return false;
 }

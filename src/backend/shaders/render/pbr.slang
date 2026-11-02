@@ -99,13 +99,13 @@ float4 fs_main(PbrVertexOut input) : SV_Target {
                                        shadow_sampler, input.vFrag);
   float3 combined_shadow =
       lerp(float3(min(direct.ambient_intensity, 1.0)), float3(1.0),
-           point_shadow + spot_shadow + sun_shadow);
+           point_shadow + sun_shadow); //spot_shadow
 
   float4 combined =
       float4((ambient + direct.Lo * combined_shadow) + material.emissive, 1.0);
 
-  return apply_fog(combined, uEnvironment.fog, length(input.vFrag - cam_pos));
-  //   return normal;
+  // return apply_fog(combined, uEnvironment.fog, length(input.vFrag -
+  // cam_pos));
 
-  // return float4(world_normal * 0.5 + 0.5, 1);
+  return combined;
 }

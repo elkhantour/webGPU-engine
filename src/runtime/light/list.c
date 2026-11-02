@@ -1,11 +1,12 @@
 #include "list.h"
 
 #include "backend/logger.h"
-#include "backend/renderer/shadow_map/core.h"
 #include "backend/resource_manager.h"
+#include "backend/shadow_map/core.h"
 #include "backend/ubo.h"
 #include "core.h"
 #include "utils/stli.h"
+#include <stddef.h>
 
 StaticListStatus light_list_create(LightList *list, size_t capacity) {
 
@@ -13,36 +14,21 @@ StaticListStatus light_list_create(LightList *list, size_t capacity) {
     size_t *capacity;
     size_t *count;
     const char *label;
-  } light_static_list[7] = {
+  } LIGHT_STATIC_LIST[] = {
       {
-          .capacity = &list->point.base.capacity,
-          .count = &list->point.base.count,
+          .capacity = &list->point.capacity,
+          .count = &list->point.count,
           .label = "Point Light List Base",
       },
       {
-          .capacity = &list->point.shadow.capacity,
-          .count = &list->point.shadow.count,
-          .label = "Point Light List Shadow",
-      },
-      {
-          .capacity = &list->spot.base.capacity,
-          .count = &list->spot.base.count,
+          .capacity = &list->spot.capacity,
+          .count = &list->spot.count,
           .label = "Spot Light List Base",
       },
       {
-          .capacity = &list->spot.shadow.capacity,
-          .count = &list->spot.shadow.count,
-          .label = "Spot Light List Shadow",
-      },
-      {
-          .capacity = &list->sun.base.capacity,
-          .count = &list->sun.base.count,
+          .capacity = &list->sun.capacity,
+          .count = &list->sun.count,
           .label = "Sun Light List Base",
-      },
-      {
-          .capacity = &list->sun.shadow.capacity,
-          .count = &list->sun.shadow.count,
-          .label = "Sun Light List Shadow",
       },
       {
           .capacity = &list->ambient.capacity,
@@ -51,10 +37,12 @@ StaticListStatus light_list_create(LightList *list, size_t capacity) {
       },
   };
 
-  for (size_t i = 0; i < 7; i++)
-    stli_create(light_static_list[i].capacity, light_static_list[i].count,
-                capacity, light_static_list[i].label);
+  static const size_t LIGHT_STATIC_COUNT =
+      sizeof(LIGHT_STATIC_LIST) / sizeof(LIGHT_STATIC_LIST[0]);
 
+  for (size_t i = 0; i < LIGHT_STATIC_COUNT; i++)
+    stli_create(LIGHT_STATIC_LIST[i].capacity, LIGHT_STATIC_LIST[i].count,
+                capacity, LIGHT_STATIC_LIST[i].label);
 
   return StaticListStatus_Success;
 }
@@ -67,7 +55,7 @@ StaticListStatus light_list_create(LightList *list, size_t capacity) {
     if (light == NULL)                                                         \
       return NULL;                                                             \
                                                                                \
-    if (stli_insert((void *)list->entries, list->capacity, &list->count,      \
+    if (stli_insert((void *)list->entries, list->capacity, &list->count,       \
                     sizeof(Type *), (void *)&light,                            \
                     Label) != StaticListStatus_Success)                        \
       return NULL;                                                             \
@@ -75,40 +63,32 @@ StaticListStatus light_list_create(LightList *list, size_t capacity) {
     return light;                                                              \
   }
 
-LIGHT_LIST_NEW(PointLight, point_light, PointLightListBase, "Point Light");
-LIGHT_LIST_NEW(AmbientLight, ambient_light, AmbientLightList, "Ambient Light");
-LIGHT_LIST_NEW(SpotLight, spot_light, SpotLightListBase, "Spot Light");
-LIGHT_LIST_NEW(SunLight, sun_light, SunLightListBase, "Sun Light");
-
-#define LIGHT_LIST_SHADOW_INSERT(List, FuncName, Type, Label)                  \
-  StaticListStatus light_list_##FuncName##_shadow_insert(List *list,           \
-                                                         Type *light) {        \
+#define LIGHT_LIST_INSERT(List, FuncName, Type, Label)                         \
+  StaticListStatus light_list_##FuncName##_insert(List *list, Type *light) {   \
                                                                                \
-    return stli_insert((void *)list->entries, list->capacity, &list->count,   \
+    return stli_insert((void *)list->entries, list->capacity, &list->count,    \
                        sizeof(Type *), (void *)&light, Label);                 \
   }
 
-#define LIGHT_LIST_SHADOW_REMOVE(List, FuncName, Type, Label)                  \
-  StaticListStatus light_list_##FuncName##_shadow_remove(List *list,           \
-                                                         Type *light) {        \
-    return stli_remove((void *)list->entries, &list->count, sizeof(Type *),   \
+#define LIGHT_LIST_REMOVE(List, FuncName, Type, Label)                         \
+  StaticListStatus light_list_##FuncName##_remove(List *list, Type *light) {   \
+    return stli_remove((void *)list->entries, &list->count, sizeof(Type *),    \
                        (void *)light, Label);                                  \
   }
 
-LIGHT_LIST_SHADOW_INSERT(PointLightListShadow, point, PointLight,
-                         "Point Light Shadow List");
-LIGHT_LIST_SHADOW_REMOVE(PointLightListShadow, point, PointLight,
-                         "Point Light Shadow List");
+// clang-format off
+LIGHT_LIST_NEW(PointLight,   point_light,   PointLightList,   "Point Light"   );
+LIGHT_LIST_NEW(AmbientLight, ambient_light, AmbientLightList, "Ambient Light" );
+LIGHT_LIST_NEW(SpotLight,    spot_light,    SpotLightList,    "Spot Light"    );
+LIGHT_LIST_NEW(SunLight,     sun_light,     SunLightList,     "Sun Light"     );
 
-LIGHT_LIST_SHADOW_INSERT(SpotLightListShadow, spot, SpotLight,
-                         "Spot Light Shadow List");
-LIGHT_LIST_SHADOW_REMOVE(SpotLightListShadow, spot, SpotLight,
-                         "Spot Light Shadow List");
-
-LIGHT_LIST_SHADOW_INSERT(SunLightListShadow, sun, SunLight,
-                         "Sun Light Shadow List");
-LIGHT_LIST_SHADOW_REMOVE(SunLightListShadow, sun, SunLight,
-                         "Sun Light Shadow List");
+LIGHT_LIST_INSERT(PointLightList, point, PointLight, "Point Light Shadow List" );
+LIGHT_LIST_REMOVE(PointLightList, point, PointLight, "Point Light Shadow List" );
+LIGHT_LIST_INSERT(SpotLightList,  spot,  SpotLight,  "Spot Light Shadow List"  );
+LIGHT_LIST_REMOVE(SpotLightList,  spot,  SpotLight,  "Spot Light Shadow List"  );
+LIGHT_LIST_INSERT(SunLightList,   sun,   SunLight,   "Sun Light Shadow List"   );
+LIGHT_LIST_REMOVE(SunLightList,   sun,   SunLight,   "Sun Light Shadow List"   );
+// clang-format on
 
 LightListSlot light_list_uniform_new_entry(LightListUniform *list,
                                            const LightType type) {

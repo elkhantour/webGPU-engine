@@ -50,10 +50,6 @@ ShaderBindGroupUniformEntry *
 shader_update_uniform_buffer(Shader *, const bind_group_index, const bind_index,
                              WGPUBuffer, const size_t, const ShaderUpdateFlag);
 
-ShaderBindGroupUniformEntry *
-shader_update_uniform_callback(Shader *, const bind_group_index,
-                               const bind_index, const ShaderUniformUpdate *,
-                               const ShaderUpdateFlag);
 
 // TODO: since we use 'WGPU{Type}' for all the update function, why still use
 // the WGPU{Type}Descriptor for this one? Replace to WPGUSampler

@@ -53,10 +53,10 @@ SceneEditorMeshList *scene_add_point_light(Scene *scene,
                                            const LightCreateFlag flag,
                                            PointLight **dest) {
 
-  PointLightListBase *base_list = &scene->lights.point.base;
+  PointLightList *list = &scene->lights.point;
 
   // create sun light
-  PointLight *light = light_list_new_point_light(base_list);
+  PointLight *light = light_list_new_point_light(list);
 
   if (light == NULL) {
     logger_add(LoggerFlag_Error, "Scene spot light capacity reached maximum.");
@@ -80,7 +80,7 @@ SceneEditorMeshList *scene_add_point_light(Scene *scene,
   SEMCreateDescriptor sem_desc = {
       .camera = scene->active_camera,
       .viewport = &scene->viewport,
-      .target_list_index = 0,
+      .target_list_index = list->count - 1,
   };
 
   if (flag & LightCreateFlag_Shadow) {
@@ -95,13 +95,8 @@ SceneEditorMeshList *scene_add_point_light(Scene *scene,
       ubo_upload_entry(scene->ubo, UBOType_ViewProjection,
                        &light->ubo_projection[i]);
 
-    PointLightListShadow *shadow_list = &scene->lights.point.shadow;
 
-    sem_desc.target_list_index = shadow_list->count;
     sem_point_light_shadow_create(sem, light, &sem_desc);
-
-    light_list_point_shadow_insert(shadow_list, light);
-
   } else {
     sem_point_light_create(sem, light, &sem_desc);
   }
@@ -117,10 +112,10 @@ SceneEditorMeshList *scene_add_spot_light(Scene *scene,
                                           const LightCreateFlag flag,
                                           SpotLight **dest) {
 
-  SpotLightListBase *base_list = &scene->lights.spot.base;
+  SpotLightList *list = &scene->lights.spot;
 
   // create sun light
-  SpotLight *light = light_list_new_spot_light(base_list);
+  SpotLight *light = light_list_new_spot_light(list);
 
   if (light == NULL) {
     logger_add(LoggerFlag_Error, "Scene spot light capacity reached maximum.");
@@ -143,7 +138,7 @@ SceneEditorMeshList *scene_add_spot_light(Scene *scene,
   SEMCreateDescriptor sem_desc = {
       .camera = scene->active_camera,
       .viewport = &scene->viewport,
-      .target_list_index = 0,
+      .target_list_index = list->count - 1,
   };
 
   if (flag & LightCreateFlag_Shadow) {
@@ -154,13 +149,7 @@ SceneEditorMeshList *scene_add_spot_light(Scene *scene,
     ubo_upload_entry(scene->ubo, UBOType_ViewProjection,
                      &light->ubo_projection);
 
-    SpotLightListShadow *shadow_list = &scene->lights.spot.shadow;
-
-    sem_desc.target_list_index = shadow_list->count;
     sem_spot_light_shadow_create(sem, light, &sem_desc);
-
-    light_list_spot_shadow_insert(shadow_list, light);
-
   } else {
     sem_spot_light_create(sem, light, &sem_desc);
   }
@@ -217,10 +206,10 @@ SceneEditorMeshList *scene_add_sun_light(Scene *scene, SunLightDescriptor *desc,
                                          const LightCreateFlag flag,
                                          SunLight **dest) {
 
-  SunLightListBase *base_list = &scene->lights.sun.base;
+  SunLightList *list = &scene->lights.sun;
 
   // create sun light
-  SunLight *light = light_list_new_sun_light(base_list);
+  SunLight *light = light_list_new_sun_light(list);
 
   if (light == NULL) {
     logger_add(LoggerFlag_Error, "Scene sun light capacity reached maximum.");
@@ -244,7 +233,7 @@ SceneEditorMeshList *scene_add_sun_light(Scene *scene, SunLightDescriptor *desc,
   SEMCreateDescriptor sem_desc = {
       .camera = scene->active_camera,
       .viewport = &scene->viewport,
-      .target_list_index = 0,
+      .target_list_index = list->count - 1, // DEBUG UNSURE,
   };
 
   if (flag & LightCreateFlag_Shadow) {
@@ -255,10 +244,7 @@ SceneEditorMeshList *scene_add_sun_light(Scene *scene, SunLightDescriptor *desc,
     ubo_upload_entry(scene->ubo, UBOType_ViewProjection,
                      &light->ubo_projection);
 
-    SunLightListShadow *shadow_list = &scene->lights.sun.shadow;
-    sem_desc.target_list_index = shadow_list->count;
     sem_sun_light_shadow_create(sem, light, &sem_desc);
-    light_list_sun_shadow_insert(shadow_list, light);
 
   } else {
     sem_sun_light_create(sem, light, &sem_desc);

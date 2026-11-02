@@ -6,6 +6,7 @@
 #include "runtime/gui/components/tree_item.hpp"
 #include "runtime/gui/windows/display.hpp"
 #include "runtime/gui/windows/registry.hpp"
+#include "runtime/gui/windows/texture_viewer.hpp"
 
 void UI::InfoTab::draw() {
 
@@ -16,6 +17,11 @@ void UI::InfoTab::draw() {
   ImGui::SameLine();
   if (ImGui::Button("Open table"))
     UI::Registry::open = true;
+
+  ImGui::Text("Textures:");
+  ImGui::SameLine();
+  if (ImGui::Button("Open mosaic"))
+    UI::TextureViewer::open = true;
 
   // === Scene Stats Info ===
   const struct {

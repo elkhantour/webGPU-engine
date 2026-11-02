@@ -55,6 +55,31 @@ EXTERN_C_BEGIN
 
 void logger_add(const LoggerFlag, const char *, ...);
 
+// TODO replace logs
+
+// clang-format off
+#define LOG_METHOD(_)\
+_(               , LoggerFlag_Print         ) \
+_( wrn           , LoggerFlag_Warning       ) \
+_( err           , LoggerFlag_Error         ) \
+_( dbg           , LoggerFlag_Debug         ) \
+_( shader_create , LoggerFlag_ShaderCreate  )\
+_( mesh_build    , LoggerFlag_MeshBuild     )\
+_( mesh_create   , LoggerFlag_MeshCreate    )\
+_( imp           , LoggerFlag_Import        )\
+_( scs           , LoggerFlag_Success       )\
+_( proc          , LoggerFlag_Process       )
+// clang-format on
+#define _(Label, Type)                                                         \
+  static inline void log_##Label(const char *fmt, ...) {                       \
+    va_list args;                                                              \
+    va_start(args, fmt);                                                       \
+    logger_add(Type, fmt, args);                                               \
+    va_end(args);                                                              \
+  }
+LOG_METHOD(_)
+#undef _
+
 static inline void dbg(const char *fm, ...) {
   va_list args;
   va_start(args, fm);

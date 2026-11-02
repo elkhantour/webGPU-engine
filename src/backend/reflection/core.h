@@ -3,7 +3,7 @@
 
 #include "backend/compute/core.h"
 #include "backend/renderer/core.h"
-#include "backend/renderer/render_pass/core.h"
+#include "backend/render_pass/core.h"
 #include "runtime/texture/core.h"
 #include "utils/defines.h"
 #include "webgpu/webgpu.h"

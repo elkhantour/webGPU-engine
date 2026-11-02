@@ -11,17 +11,18 @@
 #include "backend/logger.h"
 #include "backend/postfx/core.h"
 #include "backend/profiler.h"
-#include "backend/renderer/render_pass/core.h"
-#include "backend/renderer/render_pass/texture.h"
-#include "backend/renderer/shadow_map/draw.h"
+#include "backend/render_pass/core.h"
+#include "backend/render_pass/draw.h"
+#include "backend/render_pass/texture.h"
 #include "backend/resource_manager.h"
-#include "backend/stat.h"
 #include "backend/shaders/core.h"
+#include "backend/shadow_map/core.h"
+#include "backend/shadow_map/draw.h"
+#include "backend/stat.h"
 #include "backend/std_texture/core.h"
 #include "backend/ubo.h"
 #include "emscripten/html5.h"
 #include "emscripten/html5_webgpu.h"
-#include "render_pass/draw.h"
 #include "runtime/input/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/pipeline/render.h"
@@ -31,7 +32,6 @@
 
 static void renderer_render(void *);
 
-
 typedef RenderPassLayoutListDescriptor
     renderer_draw_lists[RENDERER_DRAW_MODE_COUNT][RENDERER_LAYER_COUNT];
 
@@ -39,7 +39,6 @@ static inline void renderer_pass_layout_from_batch(Renderer *,
                                                    renderer_draw_lists);
 
 static inline void renderer_pass_create(Renderer *, renderer_draw_lists);
-
 
 void renderer_create(Renderer *renderer, const RendererCreateDescriptor *desc) {
 
@@ -72,7 +71,6 @@ void renderer_create_layouts(Renderer *renderer) {
   renderer_pass_layout_from_batch(renderer, draw_lists);
   renderer_pass_create(renderer, draw_lists);
 }
-
 
 void renderer_destroy(Renderer *renderer) {}
 
@@ -162,7 +160,6 @@ void renderer_draw(Renderer *renderer) {
   emscripten_set_main_loop_arg(renderer_render, (void *)renderer, 0, 1);
 }
 
-// getters
 void renderer_set_draw_mode(Renderer *renderer, const RendererDrawMode mode) {
   renderer->draw_mode = mode;
 }
@@ -204,7 +201,7 @@ void renderer_update_pass_texture(
 
       // replace each passes color views with resized one
       for (int j = 0; j < RENDERER_LAYER_COUNT; j++) {
-        RenderPass *pass = &pass_list->passes[j];
+        RenderPass *pass = &pass_list->layers[j];
         WGPUTextureView previous_resolve = pass->color.resolve_view;
         RenderPipelineMultisampleCount previous_multisample = pass->multisample;
 
@@ -220,9 +217,9 @@ void renderer_update_pass_texture(
 
                List                       Child Passes
 
-           .-----------.               .-- pass 1 -------.
-           |   Share   |       .-----> | Resolve Texture |
-           |-----------|      |        |-----------------|     .-------------.
+                                        .-- pass 1 ------.
+                               .-----> | Resolve Texture |
+            .-shared --.      |        |-----------------|     .-------------.
            |  Texture  |------+    .-> | Resolve View    | --> | Attachment  |
            |-----------|      |   |    '-----------------'     '-------------'
            |  View     |------|---+
@@ -282,18 +279,17 @@ void renderer_update_pass_texture(
 
       // replace each passes color views with resized one
       for (int j = 0; j < RENDERER_LAYER_COUNT - 1; j++)
-        pass_list->passes[j].depth.attachment.view = shared_depth_view;
+        pass_list->layers[j].depth.attachment.view = shared_depth_view;
 
       // create individual depth texture for gizmo pass
-      render_pass_texture_create_depth(
-          &pass_list->passes[__builtin_ctz(RendererLayer_Gizmo)],
-          &(RenderPassTextureDescriptor){
-              .format = TEXTURE_FORMAT_DEPTH,
-              .height = real_height,
-              .width = real_width,
-              .multisample = multisample,
-          },
-          RenderPassTextureFlag_ReleasePrevious);
+      render_pass_texture_create_depth(&pass_list->layers[RendererLayer_Gizmo],
+                                       &(RenderPassTextureDescriptor){
+                                           .format = TEXTURE_FORMAT_DEPTH,
+                                           .height = real_height,
+                                           .width = real_width,
+                                           .multisample = multisample,
+                                       },
+                                       RenderPassTextureFlag_ReleasePrevious);
     }
   }
 }
@@ -319,7 +315,6 @@ void renderer_pass_layout_from_batch(Renderer *renderer,
       [ RendererDrawMode_Boundbox  ]  =   { MeshShader_Wireframe,   mesh_topology_boundbox   },
       // clang-format on
   };
-  
 
   for (uint8_t mode = 0; mode < RENDERER_DRAW_MODE_COUNT; mode++) {
 
@@ -330,7 +325,7 @@ void renderer_pass_layout_from_batch(Renderer *renderer,
         const RendererMeshConfig *key = &RENDERER_MESH_CONFIG_PRESET[k];
 
         // skip if not in current layer or draw mode
-        if (key->layer != (1 << layer) || (key->draw_mode & (1 << mode)) == 0)
+        if (key->layer != layer || (key->draw_mode & (1 << mode)) == 0)
           continue;
 
         // edge case for Fixed mesh that always draw 'texture shader' and
@@ -346,8 +341,6 @@ void renderer_pass_layout_from_batch(Renderer *renderer,
             .shader = draw_mode_attributes[target_mode].shader,
             .topology_callback =
                 draw_mode_attributes[target_mode].topology_callback,
-            .mesh_preprocessor_callback = NULL,
-            .mesh_preprocessor_data = NULL,
         };
 
         draw_lists[mode][layer].count++;
@@ -365,7 +358,7 @@ void renderer_pass_create(Renderer *renderer, renderer_draw_lists draw_lists) {
   const int render_height = renderer_height(renderer) * ratio;
 
   const RenderPipelineMultisampleCount multisample = renderer->multisample;
-  static const char *pass_name[] = {"Boundbox", "Wireframe", "Solid",
+  static const char *PASS_NAME[] = {"Boundbox", "Wireframe", "Solid",
                                     "Texture"};
 
   for (uint8_t mode = 0; mode < RENDERER_DRAW_MODE_COUNT; mode++) {
@@ -437,7 +430,7 @@ void renderer_pass_create(Renderer *renderer, renderer_draw_lists draw_lists) {
         }};
 
     name_t scene_pass_name;
-    name_compose(scene_pass_name, "%s Scene Render Pass", pass_name[mode]);
+    name_compose(scene_pass_name, "%s Scene Render Pass", PASS_NAME[mode]);
     const RenderPassCreateDescriptor scene_pass = {
         .type = RenderPassType_OnScreen,
         .label = scene_pass_name,
@@ -446,7 +439,7 @@ void renderer_pass_create(Renderer *renderer, renderer_draw_lists draw_lists) {
         .height = render_height,
         .color = &scene_color_attachment,
         .depth = &scene_depth_attachment,
-        .draw_list = &draw_lists[mode][__builtin_ctz(RendererLayer_Default)],
+        .draw_list = &draw_lists[mode][RendererLayer_Default],
     };
 
     render_pass_list_insert_pass(&pass_list[mode], &scene_pass);
@@ -487,7 +480,7 @@ void renderer_pass_create(Renderer *renderer, renderer_draw_lists draw_lists) {
         }};
 
     name_t outline_pass_name;
-    name_compose(outline_pass_name, "%s Outline Render Pass", pass_name[mode]);
+    name_compose(outline_pass_name, "%s Outline Render Pass", PASS_NAME[mode]);
     const RenderPassCreateDescriptor outline_pass = {
         .type = RenderPassType_OnScreen,
         .label = outline_pass_name,
@@ -496,7 +489,7 @@ void renderer_pass_create(Renderer *renderer, renderer_draw_lists draw_lists) {
         .height = render_height,
         .color = &outline_color_attachment,
         .depth = &outline_depth_attachment,
-        .draw_list = &draw_lists[mode][__builtin_ctz(RendererLayer_Outline)],
+        .draw_list = &draw_lists[mode][RendererLayer_Outline],
     };
 
     render_pass_list_insert_pass(&pass_list[mode], &outline_pass);
@@ -533,7 +526,7 @@ void renderer_pass_create(Renderer *renderer, renderer_draw_lists draw_lists) {
         }};
 
     name_t gizmo_pass_name;
-    name_compose(gizmo_pass_name, "%s Gizmo Render Pass", pass_name[mode]);
+    name_compose(gizmo_pass_name, "%s Gizmo Render Pass", PASS_NAME[mode]);
     const RenderPassCreateDescriptor gizmo_pass = {
         .type = RenderPassType_OnScreen,
         .label = gizmo_pass_name,
@@ -542,7 +535,7 @@ void renderer_pass_create(Renderer *renderer, renderer_draw_lists draw_lists) {
         .height = render_height,
         .color = &gizmo_color_attachment,
         .depth = &gizmo_depth_attachment,
-        .draw_list = &draw_lists[mode][__builtin_ctz(RendererLayer_Gizmo)],
+        .draw_list = &draw_lists[mode][RendererLayer_Gizmo],
     };
 
     RenderPass *last_pass =
@@ -600,4 +593,3 @@ void renderer_pass_create(Renderer *renderer, renderer_draw_lists draw_lists) {
     }
   }
 }
-

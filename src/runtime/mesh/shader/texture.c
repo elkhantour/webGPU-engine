@@ -13,7 +13,7 @@
 #include "runtime/probe/reflection/plane.h"
 #include "runtime/shader/bindgroup.h"
 #include "runtime/shader/core.h"
-#include "backend/renderer/shadow_map/core.h"
+#include "backend/shadow_map/core.h"
 #include "runtime/shader/update.h"
 #include "runtime/texture/core.h"
 #include "webgpu/webgpu.h"
@@ -70,12 +70,12 @@ void mesh_shader_texture_update_shadow_maps(Mesh *mesh,
   // add multi-layered texture to default shader
   shader_update_texture_view(
       shader, bindings->light_list->group, bindings->light_list->point_texture,
-      point_texture_view, texture_format, ShaderUpdateFlag_ReleasePrevious);
+      point_texture_view, texture_format, ShaderUpdateFlag_KeepPrevious);
 
   shader_update_texture_view(shader, bindings->light_list->group,
                              bindings->light_list->directional_texture,
                              spot_texture_view, texture_format,
-                             ShaderUpdateFlag_ReleasePrevious);
+                             ShaderUpdateFlag_KeepPrevious);
 }
 
 void mesh_shader_texture_update_probes(Mesh *mesh,

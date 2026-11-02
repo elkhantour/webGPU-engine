@@ -28,20 +28,21 @@
 #include "backend/context.h"
 #include "backend/logger.h"
 #include "backend/resource_manager.h"
+#include "backend/shaders/include/depthvis.h"
 #include "runtime/pipeline/render.h"
 #include "runtime/pipeline/set.h"
 #include "webgpu/webgpu.h"
 
 // Global definitions
-RenderPipeline *g_std_render_pipelines[RENDER_PIPELINE_TYPE_COUNT] = {0};
-ComputePipeline *g_std_compute_pipelines[COMPUTE_PIPELINE_TYPE_COUNT] = {0};
+RenderPipeline *g_std_render_pipelines[RenderPipelineType_COUNT] = {0};
+ComputePipeline *g_std_compute_pipelines[ComputePipelineType_COUNT] = {0};
 
 static inline WGPUPipelineLayout shader_pipeline_state_object_create(
     const WGPUBindGroupLayoutDescriptor *const *, const size_t,
     WGPUBindGroupLayout *);
 
 static const RenderPipelineStateObject
-    *standard_render_layouts[RENDER_PIPELINE_TYPE_COUNT] = {
+    *standard_render_layouts[RenderPipelineType_COUNT] = {
         // clang-format off
         [ RenderPipelineType_Billboard       ]   =   &layout_billboard,
         [ RenderPipelineType_Default         ]   =   &layout_default,
@@ -64,11 +65,12 @@ static const RenderPipelineStateObject
         [ RenderPipelineType_Stencil         ]   =   &layout_stencil,
         [ RenderPipelineType_Bloom           ]   =   &layout_bloom,
         [ RenderPipelineType_Composite       ]   =   &layout_composite,
+        [ RenderPipelineType_DepthVis        ]   =   &layout_depth_vis,
         // clang-format on
 };
 
 static const ComputePipelineStateObject
-    *standard_compute_layouts[COMPUTE_PIPELINE_TYPE_COUNT] = {
+    *standard_compute_layouts[ComputePipelineType_COUNT] = {
         // clang-format off
         [ ComputePipelineType_Mipmap         ]   =   &layout_mipmap,
         [ ComputePipelineType_Kawase         ]   =   &layout_kawase,
@@ -88,7 +90,7 @@ void standard_render_pipelines_init(
 
   logger_add(LoggerFlag_Process, "Initializing Standard Render Pipelines...");
 
-  for (RenderPipelineType i = 0; i < RENDER_PIPELINE_TYPE_COUNT; i++) {
+  for (RenderPipelineType i = 0; i < RenderPipelineType_COUNT; i++) {
 
     if (standard_render_layouts[i] == NULL) {
       logger_add(
@@ -167,7 +169,7 @@ void standard_compute_pipelines_init() {
 
   logger_add(LoggerFlag_Process, "Initializing Standard Compute Pipelines...");
 
-  for (ComputePipelineType i = 0; i < COMPUTE_PIPELINE_TYPE_COUNT; i++) {
+  for (ComputePipelineType i = 0; i < ComputePipelineType_COUNT; i++) {
 
     const ComputePipelineStateObject *layout = standard_compute_layouts[i];
     g_std_compute_pipelines[i] = rem_new_compute_pipeline();
@@ -224,7 +226,7 @@ WGPUPipelineLayout shader_pipeline_state_object_create(
 }
 
 void standard_render_pipelines_destroy() {
-  for (RenderPipelineType i = 0; i < RENDER_PIPELINE_TYPE_COUNT; i++)
+  for (RenderPipelineType i = 0; i < RenderPipelineType_COUNT; i++)
     rem_destroy_render_pipeline(g_std_render_pipelines[i]);
 }
 
